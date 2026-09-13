@@ -184,7 +184,10 @@ class GITD_Handler : EventHandler
 	// Which map the ui side last applied to. See UiTick.
 	private ui transient String mapSig;
 
-	// Play side: where a static wave sits. See PushWaveOrigin.
+	// Play side: where a static wave sits. Worked out once per map by
+	// FindMapCentre (play scope, because it writes these), then pushed by
+	// PushWaveOrigin from UiTick as well as WorldTick -- a play field is
+	// readable from the ui side, just not writable. See PushWaveOrigin.
 	private transient bool haveCentre;
 	private transient Vector3 mapCentre;
 
@@ -228,12 +231,17 @@ class GITD_Handler : EventHandler
 		}
 		SyncPreset();
 		PushGlobals();
+
+		// The map centre is known before the first UiTick on this map, so a
+		// menu that is already open pushes this map's centre, not the last one's.
+		FindMapCentre();
 	}
 
 	override void WorldTick()
 	{
 		if (!GITD_Util.GetB("gitd_enabled", true)) return;
 		PushGlobals();
+		if (!haveCentre) FindMapCentre();
 		PushWaveOrigin();
 		SyncPreset();
 	}
@@ -486,7 +494,11 @@ class GITD_Handler : EventHandler
 		// went on imposing its wave, grain, flow, cells and alarm pulse on
 		// everybody else's glow forever.
 		bool enabled = GITD_Util.GetB("gitd_enabled", true);
-		if (enabled) PushGlobals();
+		if (enabled)
+		{
+			PushGlobals();
+			PushWaveOrigin();
+		}
 
 		if (!enabled)
 		{
@@ -560,9 +572,10 @@ class GITD_Handler : EventHandler
 		if (applying) StepApply();
 	}
 
-	// Play scope: the origin setter is play scope in the engine, because
-	// "follows you" reads the world. That also means switching Origin in the
-	// menu takes hold when the game runs again, not while the menu is up.
+	// clearscope, and pushed from UiTick as well as WorldTick, like
+	// PushGlobals: switching Origin moves the wave while the menu is up. The
+	// engine's origin setter is clearscope for exactly this, and reading the
+	// console player's position is a read of play data, which clearscope may do.
 	//
 	// Pushed every tic in BOTH modes. "Static at map centre" used to push
 	// nothing at all, so a static wave centred on whatever the last writer had
@@ -570,7 +583,11 @@ class GITD_Handler : EventHandler
 	// spot the player stood when a follow-you preset was last up, or another
 	// mod's anchor -- including on later maps, since the engine never resets
 	// the origin.
-	void PushWaveOrigin()
+	//
+	// The centre itself is worked out on the play side (FindMapCentre, from
+	// WorldLoaded and WorldTick); this only reads what it stored. Until it has
+	// run on this map there is no centre to push, so nothing is.
+	clearscope void PushWaveOrigin()
 	{
 		if (!Level) return;
 
@@ -581,13 +598,14 @@ class GITD_Handler : EventHandler
 			return;
 		}
 
-		if (!haveCentre) FindMapCentre();
+		if (!haveCentre) return;
 		Level.SetGlowWaveOrigin(mapCentre);
 	}
 
 	// The middle of the box around every sector's centre spot, once per map.
 	// Height is halfway between the lowest floor and the highest ceiling, so a
-	// rising wave's crest spacing is measured from inside the level.
+	// rising wave's crest spacing is measured from inside the level. Play scope
+	// because it writes the play-side fields PushWaveOrigin reads.
 	void FindMapCentre()
 	{
 		haveCentre = true;

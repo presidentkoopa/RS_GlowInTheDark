@@ -140,10 +140,6 @@ per-pixel layer (Wave, Surface Detail, the alarm) and the four lanes alike.
 Drag a lane or cells slider with the menu up and the map re-tints under it.
 That is what the fork's clearscope declarations on the glow setters are for.
 
-One exception: the wave's Origin. The engine keeps it as world state, so
-switching between "Map centre" and "Follows player" takes hold when the game
-runs again.
-
 SAVES
 -----
 

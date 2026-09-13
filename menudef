@@ -320,8 +320,6 @@ OptionMenu "GITDWave"
 	Slider "  Ceiling", "gitd_wave_ph_ceil", 0, 1, 0.05, 2
 	StaticText ""
 	Option "Origin", "gitd_wave_origin", "GITD_Origin"
-	StaticText "Origin takes hold when the game runs again -", "gray"
-	StaticText "the engine keeps it as world state.", "gray"
 }
 
 //-------------------------------------------------------- surface detail --
