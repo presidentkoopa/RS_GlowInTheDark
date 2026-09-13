@@ -3,21 +3,23 @@
 // Replaces the 1.1 ACS script entirely. What changed and why:
 //
 //   1.1 walked sector TAGS 0..99998 calling ACS SetSectorGlow. Tag 0 matches
-//   every UNTAGGED sector at once (p_tags.cpp:419), and random() is evaluated
-//   once per call, so the whole map received a single shared colour -- the
-//   per-sector randomisation it advertised never happened. Everything after
-//   tag 0 hit only doors and lifts, arriving one per tic over ~47 minutes
-//   because its throttle test was inverted.
+//   every UNTAGGED sector at once (FSectorTagIterator::Next, p_tags.cpp), and
+//   random() is evaluated once per call, so the whole map received a single
+//   shared colour -- the per-sector randomisation it advertised never
+//   happened. Everything after tag 0 hit only doors and lifts, arriving one
+//   per tic over ~47 minutes because its throttle test was inverted.
 //
 //   This iterates Level.Sectors by index. Every sector is reached, each gets
-//   its own colour, and the whole map is done in one or two tics.
+//   its own colour, and the whole map is done in a handful of tics.
 //
-// Lane enable/disable is carried by COLOUR ALPHA, not by a separate flag:
-// the renderer gates on `.a > 0` for wall glow (hw_walls.cpp:61) and on
-// `FlatGlowColor.a > 0 && FlatGlowHeight > 0` for flat glow
-// (hw_flats.cpp:439). Alpha 0 is off. This is why GITD_Util always builds
-// colours with alpha 255 -- a colour that loses its alpha silently kills the
-// lane with no error anywhere.
+// Lane enable/disable is carried by COLOUR ALPHA and height, not by a separate
+// flag. Flat glow is gated on `FlatGlowColor.a > 0 && FlatGlowHeight > 0`
+// (HWFlat::DrawFlat, hw_flats.cpp): alpha 0 is off. Wall glow is read by
+// sector_t::GetWallGlow (p_sectors.cpp), where a colour of exactly 0 hands the
+// wall back to its texture's own GLDEFS glow -- which is what a lane switched
+// off writes, with a height of 0 beside it. This is why GITD_Util always
+// builds colours with alpha 255 -- a colour that loses its alpha silently
+// kills a flat lane with no error anywhere.
 
 // One lane's settings, read once per apply rather than per sector.
 class GITD_Lane
@@ -35,7 +37,15 @@ class GITD_Lane
 	// runs from UiTick so the menu can re-tint the map while the game is
 	// paused, and `new` is not something to be doing from there -- once per
 	// slider-drag per lane, every drag, for the whole time the menu is open.
-	// The handler allocates these five once and hands them back here.
+	// The handler allocates these once and hands them back here.
+	//
+	// The lane cvars are named at run time from the prefix, so menu_lint
+	// cannot see them read; they are declared for it here instead.
+	// LINT-CVARS: gitd_wf_on gitd_wf_policy gitd_wf_color gitd_wf_reach gitd_wf_falloff gitd_wf_intensity gitd_wf_far gitd_wf_farcolor
+	// LINT-CVARS: gitd_wc_on gitd_wc_policy gitd_wc_color gitd_wc_reach gitd_wc_falloff gitd_wc_intensity gitd_wc_far gitd_wc_farcolor
+	// LINT-CVARS: gitd_fg_on gitd_fg_policy gitd_fg_color gitd_fg_reach gitd_fg_falloff gitd_fg_intensity gitd_fg_far gitd_fg_farcolor
+	// LINT-CVARS: gitd_cg_on gitd_cg_policy gitd_cg_color gitd_cg_reach gitd_cg_falloff gitd_cg_intensity gitd_cg_far gitd_cg_farcolor
+	// LINT-CVARS: gitd_liq_on gitd_liq_policy gitd_liq_color gitd_liq_reach gitd_liq_falloff gitd_liq_intensity gitd_liq_far gitd_liq_farcolor
 	clearscope void Fill(String p)
 	{
 		on        = GITD_Util.GetB(p .. "_on", true);
@@ -55,13 +65,24 @@ class GITD_Lane
 		return l;
 	}
 
+	// Whether this lane puts anything on screen. Intensity 0 counts as OFF,
+	// and has to be caught here: the renderer reads an intensity of 0 or less
+	// as "unset" and draws it at 1.0 (HWFlat::DrawFlat and
+	// HWWall::RenderTexturedWall), so dragging Intensity to its bottom stop
+	// used to jump the glow to full brightness instead of putting it out.
+	clearscope bool Drawn()
+	{
+		return on && intensity > 0.0;
+	}
+
 	// The colour this lane fades toward. Auto-derivation is the default
 	// because a hand-picked far colour is the single most tedious thing to
 	// tune and the derived one is right nearly always.
 	//
-	// Seamless corners override this afterwards: the lane's own colour becomes
-	// its far end and the junction colour takes the near slot. See the
-	// seamless block in ApplySector.
+	// Seamless corners replace an AUTO far colour afterwards: the lane's own
+	// colour becomes its far end and the junction colour takes the near slot.
+	// An explicit or "off" far colour is left alone. See the seamless block in
+	// ApplySector.
 	clearscope Color FarFor(Color nearCol)
 	{
 		if (farMode == 0) return Color(0, 0, 0, 0);
@@ -72,9 +93,10 @@ class GITD_Lane
 
 class GITD_Handler : EventHandler
 {
-	// Sectors per tic during a re-apply. A 5000-sector map finishes in three
-	// tics with no visible hitch. 1.1's equivalent constant was 2500 but its
-	// modulo test was inverted, so it actually managed about one.
+	// Sectors per tic during a re-apply. There are two passes (resolve, then
+	// blend and write), so a 5000-sector map finishes in six tics with no
+	// visible hitch. 1.1's equivalent constant was 2500 but its modulo test was
+	// inverted, so it actually managed about one.
 	const APPLY_CHUNK = 2000;
 
 	// How often to check whether any lane setting moved. Five tics is about
@@ -82,7 +104,17 @@ class GITD_Handler : EventHandler
 	// slow enough that the check itself is free.
 	const POLL_TICS = 5;
 
+	// How often to look at the sector state no cvar carries -- light levels
+	// and flats. About once a second: a door or a lift changing a floor is not
+	// something that needs catching on the tic it happens.
+	const WATCH_TICS = 35;
+
 	const PRESET_COUNT = 23;
+
+	// Stored in the per-sector colour tables for a lane that draws nothing
+	// there. Pack() never produces a negative, so this cannot collide with a
+	// real colour.
+	const NO_COLOUR = -1;
 
 	// Per-lane hash salts, so a sector's four lanes do not all land on the
 	// same colour under the hashed policies.
@@ -91,16 +123,26 @@ class GITD_Handler : EventHandler
 	const SALT_FG = 3;
 	const SALT_CG = 4;
 
-	private ui bool applying;
-	private ui int applyCursor;
-	private ui uint lastHash;
-	private ui int pollTimer;
-	private ui bool wasEnabled;
+	// TRANSIENT, EVERY ONE OF THEM. An EventHandler is written into the
+	// savegame field by field, and the save keeps only each plane's glow colour
+	// and height -- not the far colour, falloff, intensity, or any of the flat
+	// glow. With these saved, a loaded game (or a hub return) came back with
+	// the same map signature and settings hash, so nothing re-applied and the
+	// floors and ceilings stayed dark until a slider moved. Transient fields
+	// come back empty, the signature no longer matches, and the whole map is
+	// written again in a few tics. It also keeps four ints per sector out of
+	// every save.
+	private ui transient bool applying;
+	private ui transient int applyCursor;
+	private ui transient uint lastHash;
+	private ui transient int pollTimer;
+	private ui transient bool wasEnabled;
 
-	private ui GITD_Range range;
-	private ui GITD_Lane laneWF, laneWC, laneFG, laneCG, laneLiq;
-	private ui bool liqOn, liqWalls;
-	private ui bool seamless;
+	private ui transient GITD_Range range;
+	private ui transient GITD_Lane laneWF, laneWC, laneFG, laneCG, laneLiq;
+	private ui transient bool liqOn, liqWalls;
+	private ui transient bool seamless;
+	private ui transient bool seamShape;
 
 	// SEAMLESS WALLS.
 	//
@@ -118,17 +160,33 @@ class GITD_Handler : EventHandler
 	// blended -- a sector cannot average against neighbours that have not been
 	// worked out yet. Hence two passes, both chunked: resolve, then blend and
 	// write. The resolve pass touches no engine state at all.
-	private ui bool wallSeam;
-	private ui double wallBlend;
-	private ui Array<int> baseWF, baseWC, baseFG, baseCG;
-	private ui int phase;      // 0 idle, 1 resolving, 2 applying
+	private ui transient bool wallSeam;
+	private ui transient double wallBlend;
+	private ui transient Array<int> baseWF, baseWC, baseFG, baseCG;
+	private ui transient Array<bool> liquidAt;
+	private ui transient int phase;      // 0 idle, 1 resolving, 2 applying
+
+	// SECTOR STATE THE SETTINGS HASH CANNOT SEE.
+	//
+	// The light, texture and liquid sources read the map, not a cvar, so the
+	// hash never noticed them change: a light switched on by a trigger kept
+	// its old colour, and a lift lowering onto nukage kept a dry floor's
+	// colour. So the flats and light levels are watched on their own clock.
+	//
+	// Light is the BRIGHTEST level seen, not the current one. A flickering
+	// sector's live level is a random point in its flicker, and keying on it
+	// reshuffled that sector's colour on every apply. The cost is that a light
+	// switched OFF keeps the colour it had lit.
+	private ui transient Array<int> seenLight, seenFloorTex, seenCeilTex;
+	private ui transient int watchTimer;
+	private ui transient bool lightKeyed, texKeyed;
 
 	// Which map the ui side last applied to. See UiTick.
-	private ui String mapSig;
+	private ui transient String mapSig;
 
-	// The UI side's own preset tracker. See UiTick for why it cannot share
-	// lastPreset. uiPresetSeen exists because 0 is a real preset (Vanilla+), so
-	// a zero uiLastPreset cannot be told apart from "not looked yet".
+	// Play side: where a static wave sits. See PushWaveOrigin.
+	private transient bool haveCentre;
+	private transient Vector3 mapCentre;
 
 	// ---- lifecycle ---------------------------------------------------------
 
@@ -141,8 +199,33 @@ class GITD_Handler : EventHandler
 	// sees the change.
 	override void WorldLoaded(WorldEvent e)
 	{
-		if (GITD_Util.GetB("gitd_shuffle", false))
-			GITD_Util.SetI("gitd_preset", random(1, PRESET_COUNT - 1));
+		// A SAVE BRINGS ITS OWN PRESET. The server cvars come back from the
+		// savegame -- the preset AND every slider tuned on top of it -- but the
+		// applied latches are nosave and still describe whatever was showing
+		// before the load. Left alone, a save made on one preset and loaded
+		// while another was up read as a preset change, and SyncPreset re-ran
+		// the preset over the tuning the save had just restored.
+		if (e.IsSaveGame)
+		{
+			GITD_Util.SetI("gitd_preset_applied", GITD_Util.GetI("gitd_preset", 1));
+			GITD_Util.SetI("gitd_texture_applied", GITD_Util.GetI("gitd_texture", 0));
+		}
+
+		// Shuffle is for a NEW map. A loaded save or a hub return is the same
+		// map you left, and rolling there threw away the look the save kept.
+		// Nor does a switched-off mod get a vote.
+		//
+		// Both rolls are drawn whenever shuffle fires, so every peer consumes
+		// the same numbers; every guard here reads peer-identical state.
+		if (!e.IsSaveGame && !e.IsReopen
+			&& GITD_Util.GetB("gitd_enabled", true)
+			&& GITD_Util.GetB("gitd_shuffle", false))
+		{
+			int rOff = random(1, PRESET_COUNT - 2);
+			int rAny = random(1, PRESET_COUNT - 1);
+			GITD_Util.SetI("gitd_preset",
+				OtherPreset(GITD_Util.GetI("gitd_preset", 1), rOff, rAny));
+		}
 		SyncPreset();
 		PushGlobals();
 	}
@@ -153,6 +236,22 @@ class GITD_Handler : EventHandler
 		PushGlobals();
 		PushWaveOrigin();
 		SyncPreset();
+	}
+
+	// A preset to roll to: never Vanilla+, and never the one already showing.
+	// Vanilla+ is skipped because landing on the deliberately restrained one
+	// reads as the mod having switched itself off; the current one is skipped
+	// because a roll that visibly does nothing reads as a bug.
+	//
+	// The random numbers come in rather than being drawn here, so the callers
+	// can draw them unconditionally. rOff is 1..PRESET_COUNT-2, rAny is
+	// 1..PRESET_COUNT-1. Stepping 1..21 places round a ring of the 22
+	// non-Vanilla presets can land anywhere except back where it started.
+	static int OtherPreset(int cur, int rOff, int rAny)
+	{
+		int pool = PRESET_COUNT - 1;
+		if (cur < 1 || cur >= PRESET_COUNT) return rAny;
+		return 1 + (cur - 1 + rOff) % pool;
 	}
 
 	// The preset picks the palette, the texture layer picks the surface, and
@@ -169,16 +268,19 @@ class GITD_Handler : EventHandler
 		bool texChanged    = (wantTex != GITD_Util.GetI("gitd_texture_applied", -2));
 		if (!presetChanged && !texChanged) return;
 
-		// Re-apply the palette when the PRESET changes -- and also when the
-		// texture selection returns to "from the preset". Apply(T_PRESET) is
-		// deliberately a no-op, which is only correct if the preset was
-		// re-applied on the same pass. Without this, choosing a texture and
-		// then choosing "from the preset" left the chosen texture live
-		// forever: the menu option was a one-way door.
-		if (presetChanged || (texChanged && wantTex == GITD_Textures.T_PRESET))
+		if (presetChanged)
 		{
 			GITD_Presets.Apply(want);
 			GITD_Util.SetI("gitd_preset_applied", want);
+		}
+		else if (texChanged && wantTex == GITD_Textures.T_PRESET)
+		{
+			// Back to "from the preset": put back the preset's own grain, flow
+			// and cells, and nothing else. GITD_Textures.Apply(T_PRESET) is a
+			// no-op, so without this a chosen texture stayed live forever -- the
+			// menu option was a one-way door. It used to re-run the WHOLE
+			// preset here, which fixed that and wiped every slider tuned since.
+			GITD_Presets.Apply(want, true);
 		}
 
 		GITD_Textures.Apply(wantTex);
@@ -199,23 +301,90 @@ class GITD_Handler : EventHandler
 		//
 		// WorldThingDied fires identically on all peers and both guards above
 		// read peer-identical state, so drawing here costs the same rolls
-		// everywhere. Only the USE of them is local.
+		// everywhere. Only the USE of them is local. All four are drawn every
+		// time, whichever one ends up used, for the same reason.
 		int cur = GITD_Util.GetI("gitd_preset", 1);
-		// An offset rather than a flat pick, so it can never land on the
-		// preset already showing -- a one-in-eighteen chance of a death that
-		// visibly did nothing.
-		int rollPreset = (cur + random(1, PRESET_COUNT - 1)) % PRESET_COUNT;
+		int rOff = random(1, PRESET_COUNT - 2);
+		int rAny = random(1, PRESET_COUNT - 1);
 		int rollSeed = random(0, 9999);
+		int rollHue = random(30, 330);
 
 		// Only the player whose screen this is. In co-op every death would
 		// otherwise restyle the map for everyone.
 		if (e.Thing.player != players[consoleplayer]) return;
 
-		if (mode == 2) GITD_Util.SetI("gitd_preset", rollPreset);
-		else           GITD_Util.SetI("gitd_seed", rollSeed);
+		int rollPreset = OtherPreset(cur, rOff, rAny);
+		if (mode == 2)
+		{
+			GITD_Util.SetI("gitd_preset", rollPreset);
+			return;
+		}
 
-		// Either path changes the settings hash, so the next poll re-applies
+		// "NEW COLOURS" NEEDS A COLOUR SOURCE THAT CAN CHANGE. The seed only
+		// reaches the random and texture policies, so on a preset built from
+		// fixed colours or light keying -- nine of the twenty-three -- a new
+		// seed re-applied the map and nothing visible happened. A light-keyed
+		// look turns its hue window instead; an all-fixed look has no colour
+		// the mod can vary, so it gets a new preset rather than nothing.
+		bool hashed = UsesPolicy(GITD_Policy.POLICY_RANDOM)
+			|| UsesPolicy(GITD_Policy.POLICY_TEXTURE);
+		if (hashed)
+			GITD_Util.SetI("gitd_seed", rollSeed);
+		else if (UsesPolicy(GITD_Policy.POLICY_LIGHT))
+			TurnHueWindow(rollHue);
+		else
+			GITD_Util.SetI("gitd_preset", rollPreset);
+
+		// Every path changes the settings hash, so the next poll re-applies
 		// on its own.
+	}
+
+	// Does any lane that draws something use this policy? Read from the
+	// cvars, because the play side has no lane objects of its own.
+	static bool UsesPolicy(int policy)
+	{
+		if (LaneUses("gitd_wf", policy)) return true;
+		if (LaneUses("gitd_wc", policy)) return true;
+		if (LaneUses("gitd_fg", policy)) return true;
+		if (LaneUses("gitd_cg", policy)) return true;
+		return GITD_Util.GetB("gitd_liq_on", true) && LaneUses("gitd_liq", policy);
+	}
+
+	static bool LaneUses(String p, int policy)
+	{
+		return GITD_Util.GetB(p .. "_on", true)
+			&& GITD_Util.GetF(p .. "_intensity", 1.0) > 0.0
+			&& GITD_Util.GetI(p .. "_policy", 0) == policy;
+	}
+
+	// Rotate the hue window by `by` degrees, keeping its width. A window that
+	// already spans the whole circle is kept one degree short of it: min equal
+	// to max reads as a zero-width window, which would flatten the look to
+	// one hue.
+	static void TurnHueWindow(int by)
+	{
+		double lo = GITD_Util.GetF("gitd_hue_min", 0.0);
+		double hi = GITD_Util.GetF("gitd_hue_max", 360.0);
+		double span = hi - lo;
+		if (span < 0.0) span += 360.0;
+
+		double nlo = lo + by;
+		if (nlo >= 360.0) nlo -= 360.0;
+
+		double nhi;
+		if (span >= 360.0)
+		{
+			nhi = nlo - 1.0;
+			if (nhi < 0.0) { nlo = 0.0; nhi = 360.0; }
+		}
+		else
+		{
+			nhi = nlo + span;
+			if (nhi > 360.0) nhi -= 360.0;
+		}
+
+		GITD_Util.SetF("gitd_hue_min", nlo);
+		GITD_Util.SetF("gitd_hue_max", nhi);
 	}
 
 	// ---- the per-pixel layer -----------------------------------------------
@@ -228,7 +397,7 @@ class GITD_Handler : EventHandler
 	// This is why the whole call chain here is clearscope -- a ui-scope caller
 	// cannot reach a play-scope helper, and every glow function below is
 	// declared clearscope by the engine precisely so a menu can drive it
-	// (doombase.zs:1124).
+	// (LevelLocals.SetGlowWave and its neighbours in doombase.zs).
 	//
 	// Both callers are kept rather than UiTick alone: pushing twice a tic
 	// costs about thirty CVar lookups and guarantees the feature works even if
@@ -237,7 +406,7 @@ class GITD_Handler : EventHandler
 	{
 		if (!Level) return;
 
-		// One dial over all three animation rates. Applied HERE rather than in
+		// One dial over all four animation rates. Applied HERE rather than in
 		// the presets so it rides on top of whatever a preset chose and can be
 		// moved without disturbing it -- and so it still works on hand-tuned
 		// settings that no preset ever touched.
@@ -247,7 +416,7 @@ class GITD_Handler : EventHandler
 			GITD_Util.GetF("gitd_wave_len"),
 			GITD_Util.GetF("gitd_wave_speed", 1.0) * rate,
 			GITD_Util.GetF("gitd_wave_sharp", 1.0),
-			GITD_Util.GetI("gitd_wave_shape"));
+			GITD_Util.GetI("gitd_wave_shape", 1));
 
 		Level.SetGlowWaveDepth(
 			GITD_Util.GetF("gitd_wave_reach"),
@@ -264,7 +433,7 @@ class GITD_Handler : EventHandler
 
 		Level.SetGlowTexture(
 			GITD_Util.GetF("gitd_tex_noise"),
-			GITD_Util.GetF("gitd_tex_scale", 1.0),
+			GITD_Util.GetF("gitd_tex_scale", 0.06),
 			GITD_Util.GetF("gitd_tex_drift"),
 			GITD_Util.GetF("gitd_tex_contrast", 1.0));
 
@@ -283,7 +452,7 @@ class GITD_Handler : EventHandler
 		// react only scales the engine's fog-disturbance array, which this mod
 		// does not populate -- it is exposed for completeness and for other
 		// mods that do. pulse/level are self-contained and are what the
-		// throbbing presets actually use. (vmthunks.cpp:4125)
+		// throbbing presets actually use. (SetGlowReact in vmthunks.cpp)
 		Level.SetGlowReact(
 			GITD_Util.GetF("gitd_react"),
 			GITD_Util.GetF("gitd_pulse"),
@@ -298,10 +467,10 @@ class GITD_Handler : EventHandler
 	// The lanes used to be excluded here: Sector.SetGlowColor and friends were
 	// play scope, so a paused game could not re-tint sectors and every lane
 	// edit sat dead until you closed the menu -- you could not see the change
-	// you were dragging for. Those twelve setters are clearscope now
-	// (mapdata.zs, Sector and Side), because glow is render state that merely
-	// lives on a play struct: nothing in the simulation reads any of it. So the
-	// whole apply chain runs from here, and the map re-tints under the menu.
+	// you were dragging for. Those setters are clearscope now (mapdata.zs,
+	// Sector and Side), because glow is render state that merely lives on a
+	// play struct: nothing in the simulation reads any of it. So the whole
+	// apply chain runs from here, and the map re-tints under the menu.
 	//
 	// Same poll as WorldTick rather than applying every frame: dragging a
 	// slider changes the settings hash, the hash starts an apply, the apply
@@ -340,23 +509,28 @@ class GITD_Handler : EventHandler
 		// those only happened on the play side. So while the menu was up,
 		// dragging a slider would eventually have moved the picture but picking
 		// a preset could not, because the CVars it sets were never written.
-		// Tracked separately from WorldTick's lastPreset: that is play state and
-		// UI may not write it. Both sides applying is harmless -- Apply only
-		// writes CVars, and each fires once per change it has not seen.
+		// Both sides calling it is harmless: the applied latches are nosave, so
+		// the first caller's write lands at once and the second sees no change.
 		SyncPreset();
-
 
 		// A fresh level starts with its glow unset, so a new map has to be
 		// re-applied even when not one setting moved and the hash therefore
 		// matches. WorldLoaded used to kick that off; it cannot reach ui state,
 		// so the map is identified from here instead. Name plus sector count
 		// separates a real map change from a mid-level reload of the same one.
+		// A loaded save starts with an empty signature -- see the transient
+		// note on the fields.
 		String sig = Level.MapName .. ":" .. Level.Sectors.Size();
 		if (sig != mapSig)
 		{
 			mapSig = sig;
 			lastHash = 0;          // force the poll below to fire
 			pollTimer = 0;
+			// A different map's light and flat history means nothing here.
+			seenLight.Clear();
+			seenFloorTex.Clear();
+			seenCeilTex.Clear();
+			watchTimer = WATCH_TICS;
 		}
 
 		if (!wasEnabled)
@@ -377,17 +551,77 @@ class GITD_Handler : EventHandler
 			}
 		}
 
+		if (!applying && --watchTimer <= 0)
+		{
+			watchTimer = WATCH_TICS;
+			if (WatchSectors()) BeginApply();
+		}
+
 		if (applying) StepApply();
 	}
 
-	// Play scope: resolving "where the player is" reads the world.
+	// Play scope: the origin setter is play scope in the engine, because
+	// "follows you" reads the world. That also means switching Origin in the
+	// menu takes hold when the game runs again, not while the menu is up.
+	//
+	// Pushed every tic in BOTH modes. "Static at map centre" used to push
+	// nothing at all, so a static wave centred on whatever the last writer had
+	// left behind -- world (0,0,0), which is often outside the level, or the
+	// spot the player stood when a follow-you preset was last up, or another
+	// mod's anchor -- including on later maps, since the engine never resets
+	// the origin.
 	void PushWaveOrigin()
 	{
 		if (!Level) return;
-		if (GITD_Util.GetI("gitd_wave_origin") != 1) return;
 
-		let pmo = players[consoleplayer].mo;
-		if (pmo) Level.SetGlowWaveOrigin(pmo.Pos);
+		if (GITD_Util.GetI("gitd_wave_origin") == 1)
+		{
+			let pmo = players[consoleplayer].mo;
+			if (pmo) Level.SetGlowWaveOrigin(pmo.Pos);
+			return;
+		}
+
+		if (!haveCentre) FindMapCentre();
+		Level.SetGlowWaveOrigin(mapCentre);
+	}
+
+	// The middle of the box around every sector's centre spot, once per map.
+	// Height is halfway between the lowest floor and the highest ceiling, so a
+	// rising wave's crest spacing is measured from inside the level.
+	void FindMapCentre()
+	{
+		haveCentre = true;
+		mapCentre = (0, 0, 0);
+
+		int n = Level.Sectors.Size();
+		if (n == 0) return;
+
+		double x0 = 0, x1 = 0, y0 = 0, y1 = 0, z0 = 0, z1 = 0;
+		bool first = true;
+		for (int i = 0; i < n; i++)
+		{
+			let sec = Level.Sectors[i];
+			if (!sec) continue;
+
+			Vector2 c = sec.centerspot;
+			double fz = sec.CenterFloor();
+			double cz = sec.CenterCeiling();
+			if (first)
+			{
+				x0 = x1 = c.x;
+				y0 = y1 = c.y;
+				z0 = fz;
+				z1 = cz;
+				first = false;
+				continue;
+			}
+			x0 = min(x0, c.x); x1 = max(x1, c.x);
+			y0 = min(y0, c.y); y1 = max(y1, c.y);
+			z0 = min(z0, fz);  z1 = max(z1, cz);
+		}
+		if (first) return;
+
+		mapCentre = ((x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5);
 	}
 
 	// ---- applying the lanes ------------------------------------------------
@@ -424,32 +658,53 @@ class GITD_Handler : EventHandler
 		// Seamless corners and glow waves are mutually exclusive, and the
 		// exclusion is enforced here rather than left to the user.
 		//
-		// The corner works by matching reach across the junction. A wave moves
-		// reach per pixel, so undulating one side of a corner reopens the seam
-		// it just closed -- and worse, the seam then travels. Either the room
-		// is bounded by continuous colour with no edge, or the edge moves;
-		// it cannot be both. Six of the presets run waves, so silently
+		// The corner works by agreeing on colour across the junction. A wave
+		// moves reach per pixel, so undulating one side of a corner reopens the
+		// seam it just closed -- and worse, the seam then travels. Either the
+		// room is bounded by continuous colour with no edge, or the edge moves;
+		// it cannot be both. Eight of the presets run waves, so silently
 		// dropping seamless while one is live is the only safe reading.
 		seamless = GITD_Util.GetB("gitd_seamless", true)
 			&& GITD_Util.GetF("gitd_wave_len") <= 0.0;
+		seamShape = GITD_Util.GetB("gitd_seamless_shape", false);
 
 		wallSeam  = GITD_Util.GetB("gitd_seamless_walls", true);
 		wallBlend = clamp(GITD_Util.GetF("gitd_wall_blend", 0.5), 0.0, 1.0);
 
+		lightKeyed = LaneKeyed(laneWF, GITD_Policy.POLICY_LIGHT)
+			|| LaneKeyed(laneWC, GITD_Policy.POLICY_LIGHT)
+			|| LaneKeyed(laneFG, GITD_Policy.POLICY_LIGHT)
+			|| LaneKeyed(laneCG, GITD_Policy.POLICY_LIGHT)
+			|| (liqOn && LaneKeyed(laneLiq, GITD_Policy.POLICY_LIGHT));
+		texKeyed = LaneKeyed(laneWF, GITD_Policy.POLICY_TEXTURE)
+			|| LaneKeyed(laneWC, GITD_Policy.POLICY_TEXTURE)
+			|| LaneKeyed(laneFG, GITD_Policy.POLICY_TEXTURE)
+			|| LaneKeyed(laneCG, GITD_Policy.POLICY_TEXTURE)
+			|| (liqOn && LaneKeyed(laneLiq, GITD_Policy.POLICY_TEXTURE));
+
 		int n = Level ? Level.Sectors.Size() : 0;
 		baseWF.Resize(n); baseWC.Resize(n);
 		baseFG.Resize(n); baseCG.Resize(n);
+		liquidAt.Resize(n);
+		if (seenLight.Size() != n) SeedWatch(n);
 
 		applyCursor = 0;
 		phase = 1;              // resolve first, then blend and write
 		applying = true;
 	}
 
+	ui bool LaneKeyed(GITD_Lane ln, int policy)
+	{
+		return ln && ln.Drawn() && ln.policy == policy;
+	}
+
 	ui void StepApply()
 	{
 		if (!Level) { applying = false; phase = 0; return; }
 
-		int n = Level.Sectors.Size();
+		// The map cannot change size under an apply, but a table sized for a
+		// different one must never be indexed past its end.
+		int n = min(Level.Sectors.Size(), baseWF.Size());
 		int end = min(applyCursor + APPLY_CHUNK, n);
 
 		if (phase == 1)
@@ -479,28 +734,34 @@ class GITD_Handler : EventHandler
 		if (!sec) return;
 
 		bool liquid = IsLiquid(sec);
+		liquidAt[idx] = liquid;
 		let floorLane  = (liquid) ? laneLiq : laneFG;
 		let wallLoLane = (liquid && liqWalls) ? laneLiq : laneWF;
 
-		baseWF[idx] = GITD_Util.Pack(Pick(wallLoLane, sec, idx, Sector.floor,   SALT_WF));
-		baseWC[idx] = GITD_Util.Pack(Pick(laneWC,     sec, idx, Sector.ceiling, SALT_WC));
-		baseFG[idx] = GITD_Util.Pack(Pick(floorLane,  sec, idx, Sector.floor,   SALT_FG));
-		baseCG[idx] = GITD_Util.Pack(Pick(laneCG,     sec, idx, Sector.ceiling, SALT_CG));
+		baseWF[idx] = Resolved(wallLoLane, sec, idx, Sector.floor,   SALT_WF);
+		baseWC[idx] = Resolved(laneWC,     sec, idx, Sector.ceiling, SALT_WC);
+		baseFG[idx] = Resolved(floorLane,  sec, idx, Sector.floor,   SALT_FG);
+		baseCG[idx] = Resolved(laneCG,     sec, idx, Sector.ceiling, SALT_CG);
 	}
 
 	ui bool IsLiquid(Sector sec)
 	{
 		if (!liqOn) return false;
-		let td = sec.GetFloorTerrain(Sector.floor);
-		return td && td.IsLiquid;
+		return GITD_Policy.IsLiquidFloor(sec);
 	}
 
 	// Pull one sector's colour toward the average of the sectors it shares a
 	// line with. Self-references and one-sided lines are skipped -- a map edge
 	// has no neighbour to agree with, and pulling toward yourself is a no-op
 	// that would still drag the average.
+	//
+	// So are neighbours where the lane draws nothing. Those used to be stored
+	// as black and averaged in like any colour, so with Floor Face off and
+	// liquids on, every liquid floor was dragged halfway to black by the dry
+	// floors around it.
 	ui Color Neighbourly(Sector sec, Array<int> store, int idx)
 	{
+		if (store[idx] == NO_COLOUR) return Color(255, 0, 0, 0);   // not drawn; unread
 		Color own = GITD_Util.Unpack(store[idx]);
 		if (!wallSeam || wallBlend <= 0.0) return own;
 
@@ -515,6 +776,7 @@ class GITD_Handler : EventHandler
 
 			int oi = other.Index();
 			if (oi < 0 || oi >= store.Size()) continue;
+			if (store[oi] == NO_COLOUR) continue;
 
 			Color oc = GITD_Util.Unpack(store[oi]);
 			r += oc.r; g += oc.g; b += oc.b; cnt++;
@@ -531,8 +793,8 @@ class GITD_Handler : EventHandler
 		// Liquid floors take their own config instead of the general floor
 		// policy. This is what replaces 1.1's gldefs.bm, and it does the thing
 		// GLDEFS never could: light the liquid's own surface, not just the
-		// wall beside it.
-		bool liquid = IsLiquid(sec);
+		// wall beside it. Read from pass one, so both passes agree.
+		bool liquid = liquidAt[idx];
 
 		let floorLane  = (liquid) ? laneLiq : laneFG;
 		let wallLoLane = (liquid && liqWalls) ? laneLiq : laneWF;
@@ -551,10 +813,7 @@ class GITD_Handler : EventHandler
 		Color fFG = (floorLane)  ? floorLane.FarFor(cFG)  : Color(0, 0, 0, 0);
 		Color fCG = (laneCG)     ? laneCG.FarFor(cCG)     : Color(0, 0, 0, 0);
 
-		// Effective shape per lane. Seamless has to match these across a
-		// junction too -- a ramp that changes width, curve or brightness
-		// halfway across a corner reads as a seam even when the colour is
-		// continuous.
+		// Each lane's own shape.
 		double rWF = LaneReach(wallLoLane), rWC = LaneReach(laneWC);
 		double rFG = LaneReach(floorLane),  rCG = LaneReach(laneCG);
 		int    kWF = LaneFall(wallLoLane),  kWC = LaneFall(laneWC);
@@ -562,10 +821,10 @@ class GITD_Handler : EventHandler
 		double iWF = LaneInten(wallLoLane), iWC = LaneInten(laneWC);
 		double iFG = LaneInten(floorLane),  iCG = LaneInten(laneCG);
 
-		bool wfOn = wallLoLane && wallLoLane.on;
-		bool wcOn = laneWC     && laneWC.on;
-		bool fgOn = floorLane  && floorLane.on;
-		bool cgOn = laneCG     && laneCG.on;
+		bool wfOn = wallLoLane && wallLoLane.Drawn();
+		bool wcOn = laneWC     && laneWC.Drawn();
+		bool fgOn = floorLane  && floorLane.Drawn();
+		bool cgOn = laneCG     && laneCG.Drawn();
 
 		// SEAMLESS CORNERS.
 		//
@@ -576,10 +835,18 @@ class GITD_Handler : EventHandler
 		// disagreeing about what colour to be AT the line they share.
 		//
 		// So it is the NEAR colours that have to agree -- they are the ones
-		// that meet. Both lanes take the junction colour at the line and their
-		// own original colour becomes the far end, which is what lets a corner
-		// still read floor-purple into wall-blue instead of collapsing to one
-		// flat wash of the average.
+		// that meet. Both lanes take the junction colour at the line. A lane
+		// whose far colour is AUTO gets its own original colour as the far end,
+		// which is what lets a corner still read floor-purple into wall-blue
+		// instead of collapsing to one flat wash of the average. An EXPLICIT far
+		// colour is kept -- it is a choice, and Hellscape's oxblood ramp is that
+		// preset's whole look -- and a lane with its far colour OFF stays a
+		// single-colour wash of the junction colour.
+		//
+		// Reach, falloff and intensity stay each lane's own. Copying the wall's
+		// onto the floor made the Floor and Ceiling Face shape sliders do
+		// nothing and drew every authored long flat reach at the wall's height.
+		// Matching shape too is its own option, off by default.
 		//
 		// A corner needs BOTH surfaces drawn before there is anything to agree
 		// with. With one side off the other keeps its own colour, exactly as
@@ -589,16 +856,20 @@ class GITD_Handler : EventHandler
 			if (wfOn && fgOn)
 			{
 				Color join = GITD_Util.Blend(cWF, cFG);
-				fWF = cWF; cWF = join;
-				fFG = cFG; cFG = join;
-				rFG = rWF; kFG = kWF; iFG = iWF;   // flat takes the wall's shape
+				if (wallLoLane.farMode == 1) fWF = cWF;
+				if (floorLane.farMode == 1)  fFG = cFG;
+				cWF = join;
+				cFG = join;
+				if (seamShape) { rFG = rWF; kFG = kWF; iFG = iWF; }   // flat takes the wall's shape
 			}
 			if (wcOn && cgOn)
 			{
 				Color join = GITD_Util.Blend(cWC, cCG);
-				fWC = cWC; cWC = join;
-				fCG = cCG; cCG = join;
-				rCG = rWC; kCG = kWC; iCG = iWC;
+				if (laneWC.farMode == 1) fWC = cWC;
+				if (laneCG.farMode == 1) fCG = cCG;
+				cWC = join;
+				cCG = join;
+				if (seamShape) { rCG = rWC; kCG = kWC; iCG = iWC; }
 			}
 		}
 
@@ -612,19 +883,21 @@ class GITD_Handler : EventHandler
 	ui int    LaneFall(GITD_Lane ln)  { return ln ? ln.falloff : 0; }
 	ui double LaneInten(GITD_Lane ln) { return ln ? ln.intensity : 1.0; }
 
-	// One lane's colour. Disabled lanes return black, which nothing
-	// downstream reads.
-	ui Color Pick(GITD_Lane ln, Sector sec, int idx, int planePos, uint salt)
+	// One lane's colour, packed for the per-sector tables. A lane that draws
+	// nothing stores NO_COLOUR, which Neighbourly skips.
+	ui int Resolved(GITD_Lane ln, Sector sec, int idx, int planePos, uint salt)
 	{
-		if (!ln || !ln.on) return Color(255, 0, 0, 0);
-		return GITD_Policy.Resolve(sec, idx, planePos, ln.policy,
-			ln.fixedCol, salt, range);
+		if (!ln || !ln.Drawn()) return NO_COLOUR;
+		int light = (idx < seenLight.Size()) ? seenLight[idx] : -1;
+		return GITD_Util.Pack(GITD_Policy.Resolve(sec, idx, planePos, ln.policy,
+			ln.fixedCol, salt, range, light));
 	}
 
 	ui void ApplyWallLane(Sector sec, int planePos, bool on,
 		Color nearCol, Color farCol, double reach, int falloff, double inten)
 	{
-		if (!on)
+		// Intensity 0 is off, not "unset" -- see GITD_Lane.Drawn.
+		if (!on || inten <= 0.0)
 		{
 			sec.SetGlowColor(planePos, Color(0, 0, 0, 0));
 			sec.SetGlowColorFar(planePos, Color(0, 0, 0, 0));
@@ -642,7 +915,7 @@ class GITD_Handler : EventHandler
 	ui void ApplyFlatLane(Sector sec, int planePos, bool on,
 		Color nearCol, Color farCol, double reach, int falloff, double inten)
 	{
-		if (!on)
+		if (!on || inten <= 0.0)
 		{
 			sec.SetFlatGlowColor(planePos, Color(0, 0, 0, 0));
 			sec.SetFlatGlowColorFar(planePos, Color(0, 0, 0, 0));
@@ -684,6 +957,71 @@ class GITD_Handler : EventHandler
 		Level.SetGlowReact(0, 0, 0);
 
 		applying = false;
+		phase = 0;
+	}
+
+	// ---- sector state ------------------------------------------------------
+
+	// Take a first reading of every sector. Called when the tables do not
+	// match the map -- the first apply on a map, or after a load.
+	ui void SeedWatch(int n)
+	{
+		seenLight.Resize(n);
+		seenFloorTex.Resize(n);
+		seenCeilTex.Resize(n);
+		for (int i = 0; i < n; i++)
+		{
+			let sec = Level.Sectors[i];
+			if (!sec) { seenLight[i] = 0; seenFloorTex[i] = 0; seenCeilTex[i] = 0; continue; }
+			seenLight[i] = sec.lightlevel;
+			TextureID ft = sec.GetTexture(Sector.floor);
+			TextureID ct = sec.GetTexture(Sector.ceiling);
+			seenFloorTex[i] = ft.GetIndex();
+			seenCeilTex[i] = ct.GetIndex();
+		}
+		watchTimer = WATCH_TICS;
+	}
+
+	// True when something a lane is keyed on has moved since the last look,
+	// and the map needs applying again. The readings are always updated, keyed
+	// or not, so a lane switched to the light policy later starts from a
+	// settled light level rather than a mid-flicker one.
+	ui bool WatchSectors()
+	{
+		if (!Level) return false;
+		int n = Level.Sectors.Size();
+		if (seenLight.Size() != n) return false;   // not seeded; the next apply does it
+
+		bool moved = false;
+		for (int i = 0; i < n; i++)
+		{
+			let sec = Level.Sectors[i];
+			if (!sec) continue;
+
+			int l = sec.lightlevel;
+			if (l > seenLight[i])
+			{
+				seenLight[i] = l;
+				if (lightKeyed) moved = true;
+			}
+
+			TextureID ft = sec.GetTexture(Sector.floor);
+			int fi = ft.GetIndex();
+			if (fi != seenFloorTex[i])
+			{
+				seenFloorTex[i] = fi;
+				if (texKeyed || liqOn) moved = true;
+			}
+
+			TextureID ct = sec.GetTexture(Sector.ceiling);
+			int ci = ct.GetIndex();
+			if (ci != seenCeilTex[i])
+			{
+				seenCeilTex[i] = ci;
+				if (texKeyed) moved = true;
+			}
+		}
+		return moved;
 	}
 
 	// ---- change detection --------------------------------------------------
@@ -702,6 +1040,7 @@ class GITD_Handler : EventHandler
 		h = Acc(h, GITD_Util.GetB("gitd_liq_on", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_liq_walls", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless", true) ? 1 : 0);
+		h = Acc(h, GITD_Util.GetB("gitd_seamless_shape", false) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless_walls", true) ? 1 : 0);
 		h = Acc(h, int(GITD_Util.GetF("gitd_wall_blend", 0.5) * 1000.0));
 		// Wavelength belongs in the per-sector hash even though the wave

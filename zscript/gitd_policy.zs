@@ -76,8 +76,14 @@ class GITD_Policy
 	// planePos is Sector.floor or Sector.ceiling. salt separates the lanes so
 	// a sector's floor and ceiling do not land on the same colour by accident
 	// -- unless gitd_lock_planes says they should.
+	//
+	// light is the level the light policy keys on. The handler passes the
+	// brightest level it has seen the sector at, not whatever lightlevel reads
+	// this instant: a flickering or strobing sector sampled mid-flicker came out
+	// a different colour on every apply, so dragging any unrelated slider
+	// reshuffled it. -1 reads the sector live, for callers with no history.
 	clearscope static Color Resolve(Sector sec, int secIndex, int planePos, int policy,
-		Color fixedCol, uint salt, GITD_Range range)
+		Color fixedCol, uint salt, GITD_Range range, int light = -1)
 	{
 		if (!range) return fixedCol;
 		if (range.lockPlanes) salt = 0;
@@ -89,7 +95,12 @@ class GITD_Policy
 
 		if (policy == POLICY_TEXTURE)
 		{
-			String tn = TexMan.GetName(sec.GetTexture(planePos));
+			// Locked lanes all key on the FLOOR's material. Zeroing the salt is
+			// not enough on its own here: the ceiling lanes hash the ceiling
+			// flat, so a room with a different ceiling kept two colours with
+			// "All four lanes share one colour" switched on.
+			int keyPlane = range.lockPlanes ? Sector.floor : planePos;
+			String tn = TexMan.GetName(sec.GetTexture(keyPlane));
 			// An empty or missing texture name would hash every such sector to
 			// the same colour, which reads as a bug rather than a look. Fall
 			// back to the sector index so they scatter instead.
@@ -101,11 +112,51 @@ class GITD_Policy
 
 		if (policy == POLICY_LIGHT)
 		{
-			double t = clamp(sec.lightlevel / 255.0, 0.0, 1.0);
+			int lvl = (light >= 0) ? light : sec.lightlevel;
+			double t = clamp(lvl / 255.0, 0.0, 1.0);
 			if (range.lightInvert) t = 1.0 - t;
 			return range.FromScalar(t);
 		}
 
 		return fixedCol;
+	}
+
+	// Is this floor a liquid?
+	//
+	// TerrainDef.IsLiquid is asked first and stays the authority: it is what a
+	// map or a mod's own TERRAIN lump says, and Heretic, Hexen and Strife get
+	// their liquids from the engine's terrain.txt that way.
+	//
+	// It cannot be the only test. The engine's terrain.txt maps floors only in
+	// its Heretic, Hexen and Strife blocks -- there is no Doom block -- so in
+	// Doom and Doom II every sector read as dry, and the Liquids page and every
+	// preset's Liquid() call did nothing at all. The stock Doom liquid flats are
+	// matched by name as the fallback. Prefixes, not whole names, so every frame
+	// of an animated flat counts. SLIME is spelled out because SLIME13-16 are
+	// plain metal floors, not slime.
+	clearscope static bool IsLiquidFloor(Sector sec)
+	{
+		if (!sec) return false;
+
+		let td = sec.GetFloorTerrain(Sector.floor);
+		if (td && td.IsLiquid) return true;
+
+		static const String liquidFlats[] =
+		{
+			"NUKAGE", "FWATER", "SWATER", "LAVA", "BLOOD",
+			"SLIME0", "SLIME10", "SLIME11", "SLIME12",
+			"RROCK05", "RROCK06", "RROCK07", "RROCK08"
+		};
+
+		String tn = TexMan.GetName(sec.GetTexture(Sector.floor));
+		int len = tn.Length();
+		if (len == 0) return false;
+
+		for (int i = 0; i < liquidFlats.Size(); i++)
+		{
+			int pl = liquidFlats[i].Length();
+			if (len >= pl && tn.Left(pl) ~== liquidFlats[i]) return true;
+		}
+		return false;
 	}
 }

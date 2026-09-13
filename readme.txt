@@ -12,13 +12,14 @@ WHY IT WAS REWRITTEN
 Tracing 1.1 through the engine turned up three things:
 
 * It only ever lit WALLS. ACS SetSectorGlow writes planes[].GlowColor and
-  nothing else (p_acs.cpp:6714). Floor and ceiling faces were never touched,
-  so the engine's entire flat-glow system was invisible to it.
+  nothing else (ACSF_SetSectorGlow in p_acs.cpp). Floor and ceiling faces were
+  never touched, so the engine's entire flat-glow system was invisible to it.
 
 * Its randomisation never happened. The first argument is a sector TAG, not an
-  index, and tag 0 matches every UNTAGGED sector at once (p_tags.cpp:419).
-  random() is evaluated once per call, so the whole map got a single shared
-  colour. Everything after tag 0 hit only doors and lifts.
+  index, and tag 0 matches every UNTAGGED sector at once
+  (FSectorTagIterator::Next in p_tags.cpp). random() is evaluated once per
+  call, so the whole map got a single shared colour. Everything after tag 0
+  hit only doors and lifts.
 
 * Its throttle test was inverted, so those doors and lifts arrived at about one
   per tic -- roughly 47 minutes to finish a sweep.
@@ -50,6 +51,16 @@ Four colour sources, selectable per lane:
 All of them land in the same HSV window, so the Randomiser page's hue,
 saturation and value ranges bound every source except Fixed.
 
+The light and texture sources read the MAP, not a setting, so the map is
+watched about once a second as well: a light raised by a trigger, or a floor
+that changes flat, re-tints on its own. Light keys on the brightest level a
+sector has been seen at, so a flickering sector holds one colour instead of
+changing every time something re-applies. The cost: a light switched OFF keeps
+the colour it had while lit.
+
+An Intensity of 0 switches a lane off. (The engine reads 0 as "unset" and would
+draw it at full brightness, so the mod treats it as off itself.)
+
 SEAMLESS CORNERS
 ----------------
 
@@ -62,14 +73,17 @@ The hard cut is not an absence of blending -- it is the two sides disagreeing
 about what colour to be AT the line they share.
 
 So it is the NEAR colours that have to agree, because they are the ones that
-meet. With this on, both lanes take the junction colour at the line, and each
-lane's own colour becomes its far end. That is what lets a corner still read
-floor-purple into wall-blue rather than collapsing into one flat wash of the
-average.
+meet. With this on, both lanes take the junction colour at the line. A lane
+whose far colour is Auto gets its own colour as the far end, which is what lets
+a corner still read floor-purple into wall-blue rather than collapsing into one
+flat wash of the average. A lane with an Explicit far colour keeps it (that is
+Hellscape's whole look), and a lane with its far colour Off stays one colour.
 
-Reach, falloff and intensity are matched across the junction too. A ramp that
-changes width, curve or brightness halfway across a corner reads as a seam
-even when the colour is continuous.
+Each lane keeps its own reach, falloff and intensity. "Match reach and falloff
+too", off by default, makes the floor and ceiling faces take the wall lane's
+shape at the corner as well -- a ramp that changes width or curve across a
+corner can read as a seam -- but with it on, the Floor Face and Ceiling Face
+Reach, Falloff and Intensity sliders do nothing wherever a wall lane meets them.
 
 Two things it deliberately does not do:
 
@@ -78,25 +92,40 @@ Two things it deliberately does not do:
   with a surface that is not being drawn.
 
 * It is IGNORED while a Wave is running, enforced in code rather than left to
-  you. The corner works by matching reach across the junction; a wave moves
-  reach per pixel, so undulating one side reopens the seam it just closed and
-  the seam then travels. Six of the presets run waves. Either the room is
-  bounded by continuous colour with no edge, or the edge moves.
+  you. A wave moves reach per pixel, so undulating one side reopens the seam
+  it just closed and the seam then travels. Eight of the presets run waves.
+  Either the room is bounded by continuous colour with no edge, or the edge
+  moves.
 
 Not to be confused with "All four lanes share one colour" on the Randomiser
-page, which forces every lane to the same colour outright. That also removes
-the seam, but by flattening the look, and it does nothing under Fixed.
+page, which forces every lane to the same colour outright (under the Texture
+source, every lane keys on the floor's flat). That also removes the seam, but
+by flattening the look, and it does nothing under Fixed.
 
-Liquids are detected via the map's terrain definitions (TerrainDef.IsLiquid),
-not a texture list. They override the floor lane and get their own config.
-This is what replaces 1.1's gldefs.bm, and it lights the liquid's own surface,
-which GLDEFS-based glow never did.
+LIQUIDS
+-------
 
-Eighteen presets, each built around a different mechanism rather than a
+A floor is a liquid when the map's terrain definitions say so
+(TerrainDef.IsLiquid) -- that covers Heretic, Hexen, Strife and any map or mod
+with its own TERRAIN lump. The engine's terrain.txt has no Doom floors at all,
+so the stock Doom liquid flats are also matched by name: NUKAGE, FWATER,
+SWATER, LAVA, BLOOD, SLIME01-12 and RROCK05-08. Liquids override the floor lane
+and get their own config. This is what replaces 1.1's gldefs.bm, and it lights
+the liquid's own surface, which GLDEFS-based glow never did.
+
+PRESETS AND TEXTURE
+-------------------
+
+Twenty-three presets, each built around a different mechanism rather than a
 different palette -- if two of them look alike, that is a bug.
 
-Sector iteration is by index over Level.Sectors, chunked at 2000 per tic. A
-5000-sector map completes in three tics.
+The Texture option picks the surface (grain, flow lines, cells) separately from
+the preset. "From the preset" puts back the current preset's own surface and
+touches nothing else; picking a PRESET rewrites every setting.
+
+Sector iteration is by index over Level.Sectors, chunked at 2000 per tic over
+two passes (resolve every colour, then blend and write). A 5000-sector map
+completes in six tics.
 
 
 NOTHING NEEDS A MAP RESTART
@@ -105,17 +134,25 @@ NOTHING NEEDS A MAP RESTART
 Lane changes re-apply within about five tics. Wave and Surface Detail push
 every tic.
 
-The per-pixel layer -- Wave, Surface Detail, the alarm -- is pushed from
-UiTick as well as WorldTick, so it keeps moving while the game is PAUSED and
-while the menu is open. Drag a wave or cells slider with the menu up and the
-picture moves under it. That is what the engine's clearscope declarations on
-those functions are for.
+Everything the menus change is pushed from UiTick as well as WorldTick, so it
+keeps moving while the game is PAUSED and while the menu is open -- the
+per-pixel layer (Wave, Surface Detail, the alarm) and the four lanes alike.
+Drag a lane or cells slider with the menu up and the map re-tints under it.
+That is what the fork's clearscope declarations on the glow setters are for.
 
-Known limit: the four LANE pages cannot do that. Sector.SetGlowColor and its
-siblings are play scope, not clearscope, so a paused playsim genuinely cannot
-re-tint sectors -- no mod can work around it. Lane edits apply the instant you
-unpause. Making those four setters clearscope would fix it, but that is an
-engine change, not a mod one.
+One exception: the wave's Origin. The engine keeps it as world state, so
+switching between "Map centre" and "Follows player" takes hold when the game
+runs again.
+
+SAVES
+-----
+
+A savegame keeps only each plane's wall glow colour and height; the far
+colours, falloff, intensity and all flat glow are not saved by the engine. On
+load the mod re-applies the whole map, so floors and ceilings are dark for the
+few tics that takes. Loading a save also keeps the preset and tuning the save
+was made with -- it is not treated as a preset change -- and a load or hub
+return never shuffles.
 
 RANDOMIZE ON DEATH
 ------------------
@@ -123,11 +160,14 @@ RANDOMIZE ON DEATH
 Options > GlowInTheDark > Randomize on death.
 
   New colours   same preset, new seed -- the look you tuned holds, the map
-                re-tints
+                re-tints. A light-keyed preset turns its hue window instead,
+                and a preset with only fixed colours has nothing to re-tint,
+                so it rolls a new preset.
   New preset    a different look entirely each time you die
 
 Rolls skip preset 0 (Vanilla+), because landing on the deliberately restrained
-one reads as the mod having switched itself off. Same rule as map shuffle.
+one reads as the mod having switched itself off, and never land on the preset
+already showing. Same rule as map shuffle.
 
 
 TESTING IT
@@ -141,17 +181,20 @@ UNLOADED -- both write GlowColor and they will fight.
    The FLOOR SURFACE should light up, not just the wall beside it. This is the
    thing 1.1 could not do at all; if it does not work, nothing else matters.
 
-2. Prove liveness. Drag any lane slider while playing. It should re-tint within
-   a fifth of a second with no hitch.
+2. Prove liveness. Drag any lane slider with the menu open. It should re-tint
+   within a fifth of a second with no hitch.
 
 3. Prove stability. Drag a Randomiser slider. Sector colours should shift as a
    group, never reshuffle.
 
-4. Prove liquids. Any map with lava or slime, Liquids page enabled.
+4. Prove liquids. Doom II MAP02 or any map with nukage or lava, Liquids page
+   enabled.
 
-5. Walk all eighteen presets on one map.
+5. Walk all twenty-three presets on one map.
 
 6. Big map, 5000+ sectors, watch for a spike when a setting changes.
+
+7. Save, change preset, load. The saved look should come back, floors included.
 
 
 THINGS I COULD NOT VERIFY WITHOUT RUNNING IT
@@ -159,22 +202,18 @@ THINGS I COULD NOT VERIFY WITHOUT RUNNING IT
 
 Being explicit about these rather than letting you find them:
 
-* Nothing here has been compiled. The ZScript is written against the engine's
-  actual declarations and every CVar name is cross-checked against cvarinfo,
-  but a syntax error is entirely possible on first load.
-
-* Wave "shape" is exposed as 0-4 because the API takes an int and the engine
-  does not document the range for this call. Some values may do nothing.
+* Wave "shape" is exposed as 1-5 (the menu's list). The engine accepts 0-9;
+  0 draws the same as 1, and 6-9 are not offered here.
 
 * "Disturbance reach" on the Surface Detail page is inert on its own. The
   engine's react parameter only scales the fog-disturbance array, which this
-  mod never populates (vmthunks.cpp:4125). It is exposed for other mods that
-  do. The throb in Red Alert and elsewhere comes from pulse/level, which are
-  self-contained.
+  mod never populates (SetGlowReact in vmthunks.cpp). It is exposed for other
+  mods that do. The throb in Red Alert and elsewhere comes from pulse/level,
+  which are self-contained.
 
-* Flat glow uses at most 64 of a sector's edges (hw_flats.cpp:462, count is
-  clamped). Very large or very complex sectors may glow from only part of
-  their perimeter. Nothing to do about it mod-side.
+* Flat glow uses at most 64 of a sector's edges (the count is clamped in
+  HWFlat::DrawFlat, hw_flats.cpp). Very large or very complex sectors may glow
+  from only part of their perimeter. Nothing to do about it mod-side.
 
 * All preset values are chosen from the parameter semantics, not from looking
   at them. Expect to want to tune them.
@@ -183,13 +222,20 @@ Being explicit about these rather than letting you find them:
 FILES
 -----
 
-  cvarinfo              82 CVars, archived so settings persist
+  cvarinfo              92 CVars, archived so settings persist
   menudef               main page plus eight submenus
   mapinfo               registers the event handler (without this: nothing)
   zscript.txt           version guard and includes
   zscript/gitd_util.zs      hashing, HSV, far-colour derivation, CVar helpers
-  zscript/gitd_policy.zs    the four colour sources
-  zscript/gitd_presets.zs   the eighteen looks
+  zscript/gitd_policy.zs    the four colour sources, liquid detection
+  zscript/gitd_presets.zs   the twenty-three looks
+  zscript/gitd_textures.zs  the surface textures, chosen apart from the preset
   zscript/gitd_handler.zs   applies lanes, drives the per-pixel layer
 
-No engine changes. Everything used here was already exported.
+ENGINE
+------
+
+This needs UZDXREMA. It is not a stock GZDoom mod: flat glow, far colours,
+falloff and intensity, the glow wave, surface texture, flow, cells and the
+alarm pulse are all fork additions, and so are the clearscope glow setters that
+let the menus re-tint the map while paused.

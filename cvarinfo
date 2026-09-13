@@ -11,7 +11,8 @@
 // Reach means different axes per system and this is easy to trip over:
 // *_reach on wf/wc is VERTICAL along the wall; on fg/cg it is HORIZONTAL,
 // inward from the nearest edge. Same name in the engine too (GlowHeight vs
-// FlatGlowHeight) -- see mapdata.zs:593.
+// FlatGlowHeight) -- see Sector.SetGlowHeight and Sector.SetFlatGlowHeight in
+// mapdata.zs.
 
 // ---------------------------------------------------------------- master --
 server bool  gitd_enabled      = true;
@@ -30,12 +31,19 @@ server int   gitd_texture      = 0;
 server bool  gitd_shuffle      = false;
 server int   gitd_ondeath      = 0;       // 0 off, 1 new colours, 2 new preset
 
-// Seamless corners. The wall lane and the flat lane meeting at a corner share
-// one fade-toward colour, so the join between them becomes a continuous ramp
-// instead of a visible edge. This is exactly what GlowColorFar exists for --
-// see mapdata.zs:578. On by default; an explicitly picked far colour on a lane
-// still overrides it.
+// Seamless corners. The wall lane and the flat lane meeting at a corner agree
+// on one colour at the line they share, and a lane on an auto far colour ramps
+// away to its own -- so the join becomes a continuous ramp instead of a
+// visible edge. This is exactly what GlowColorFar exists for -- see
+// Sector.SetGlowColorFar in wadsrc/static/zscript/mapdata.zs. On by default;
+// an explicitly picked far colour on a lane still overrides it.
 server bool  gitd_seamless     = true;
+// Seamless corners, shape too. Off by default: the floor and ceiling faces
+// take the wall lane's reach, falloff and intensity at a corner as well as its
+// colour, so the two ramps match in width and curve. On, the Floor Face and
+// Ceiling Face shape sliders stop doing anything wherever a wall lane meets
+// them -- which is why it is not the default any more.
+server bool  gitd_seamless_shape = false;
 
 // Seamless WALLS. Corners fix the join inside one sector; this fixes the join
 // BETWEEN sectors -- the hard vertical line down a wall where a red room meets
@@ -104,7 +112,10 @@ server int   gitd_cg_far       = 1;
 server color gitd_cg_farcolor  = "000000";
 
 // --------------------------------------------------------------- liquids --
-// Sectors whose floor TerrainDef.IsLiquid overrides the fg lane. This is the
+// Sectors whose floor is a liquid override the fg lane. TerrainDef.IsLiquid
+// decides first; the stock Doom liquid flats (NUKAGE, FWATER, SWATER, LAVA,
+// BLOOD, SLIME01-12, RROCK05-08) are matched by name after it, because the
+// engine's terrain.txt has no Doom floors at all. This is the
 // replacement for 1.1's gldefs.bm, and it does what GLDEFS could not: lights
 // the liquid's own surface rather than only the wall beside it.
 server bool  gitd_liq_on        = true;
@@ -132,7 +143,7 @@ server float gitd_speed          = 1.0;
 
 server float gitd_wave_speed     = 1.0;
 server float gitd_wave_sharp     = 1.0;
-server int   gitd_wave_shape     = 0;
+server int   gitd_wave_shape     = 1;
 server float gitd_wave_reach     = 0.0;
 server float gitd_wave_bright    = 0.0;
 server float gitd_wave_colour    = 0.0;
@@ -142,12 +153,12 @@ server float gitd_wave_ph_wtop   = 0.0;
 server float gitd_wave_ph_wbot   = 0.0;
 server float gitd_wave_ph_floor  = 0.0;
 server float gitd_wave_ph_ceil   = 0.0;
-server int   gitd_wave_origin    = 0;     // 0 static at map centre, 1 follows you
+server int   gitd_wave_origin    = 0;     // 0 static at map centre, 1 follows you (see PushWaveOrigin)
 
 // -------------------------------------------------------- surface detail --
 // Texture INSIDE the lit area. None of these move a glow's shape.
 server float gitd_tex_noise     = 0.0;
-server float gitd_tex_scale     = 1.0;
+server float gitd_tex_scale     = 0.06;
 server float gitd_tex_drift     = 0.0;
 server float gitd_tex_contrast  = 1.0;
 
@@ -164,7 +175,7 @@ server float gitd_cell_width    = 0.5;
 // react is a strength dial on the engine's fog-disturbance array, which this
 // mod does not populate -- it will do nothing on its own. pulse/level are the
 // self-contained "room's own alarm" and are what the throbbing presets use.
-// See vmthunks.cpp:4125 and hw_viewpointuniforms.h:288.
+// See SetGlowReact in vmthunks.cpp and mGlowTex4 in hw_viewpointuniforms.h.
 server float gitd_react         = 0.0;
 server float gitd_pulse         = 0.0;
 server float gitd_pulse_level   = 0.0;
@@ -182,13 +193,16 @@ server float gitd_pulse_rate    = 1.0;
 // the value only appears after it round-trips through tic processing. This is
 // read back one tic later by SyncPreset as an "already applied" flag, so as a
 // server cvar it still reads -1 on the next tic and the whole preset re-applies
-// -- 54 more cvar writes, which delays the round trip further, which causes
-// more passes. It compounded until the tic's net buffer overflowed and the
-// game died with "Attempted to write past end of stream".
+// -- eighty to a hundred and ten more cvar writes, which delays the round trip
+// further, which causes more passes. It compounded until the tic's net buffer
+// overflowed and the game died with "Attempted to write past end of stream".
 //
 // nosave (CVAR_CONFIG_ONLY) keeps the one property this actually needs -- it
 // survives the handler being rebuilt per map -- while writing immediately and
 // never touching the wire. Nothing else should ever see this value.
+//
+// Because it is not in the savegame, WorldLoaded re-latches both of these from
+// the restored gitd_preset and gitd_texture when a save loads.
 nosave int   gitd_preset_applied = -1;
 // Same reasoning as gitd_preset_applied above -- nosave, not server.
 nosave int   gitd_texture_applied = -2;

@@ -20,7 +20,8 @@
 //                         narrow edges on small cells read as cracks.
 //
 // A style here is free to set all three, and the good ones do -- layering was
-// the other thing barely used, with only Hellscape combining two.
+// the other thing barely used: only Hellscape (grain under cells), Circuitry
+// and Trawler (grain under flow) combine two.
 
 class GITD_Textures
 {
@@ -73,7 +74,10 @@ class GITD_Textures
 
 	static void Apply(int idx)
 	{
-		if (idx == T_PRESET) return;   // the preset's own, untouched
+		// The preset's own. SyncPreset puts it back with
+		// GITD_Presets.Apply(preset, true) before calling here, so there is
+		// nothing left for this to write.
+		if (idx == T_PRESET) return;
 
 		Clear();
 		switch (idx)
@@ -98,13 +102,14 @@ class GITD_Textures
 		// with wide edges read as frost or as leather.
 		case T_CRACKS:    Cells(0.85, 22.0, 0.04, 0.28); break;
 		case T_CRAZED:    Cells(0.95, 14.0, 0.03, 0.18); break;   // finer, harder
-		case T_FROST:     Cells(0.40, 30.0, 0.08, 0.70); break;   // Frostbite's
+		case T_FROST:     Cells(0.40, 30.0, 0.08, 0.70); break;   // Frostbite's, a shade stronger
 		case T_MOTTLE:    Cells(0.50, 24.0, 0.15, 0.55); break;
 		case T_SCALES:    Cells(0.70, 18.0, 0.10, 0.40); break;
 
 		// ---- layered: two terms at once ----------------------------------
-		// Grain under structure. Only Hellscape ever did this and it is most
-		// of why it reads as a material rather than as a pattern.
+		// Grain under structure. Hellscape, Circuitry and Trawler are the
+		// presets that do this, and it is most of why Hellscape reads as a
+		// material rather than as a pattern.
 		case T_ETCHED:
 			Grain(0.18, 0.100, 0.01, 2.0);
 			Flow(0.75, 9.0, 0.4, 3.5);

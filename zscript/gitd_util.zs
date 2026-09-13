@@ -68,8 +68,8 @@ class GITD_Util
 	// h wraps, s and v clamp.
 	//
 	// Alpha is ALWAYS 255, and that is not cosmetic: flat glow is gated on
-	// FlatGlowColor.a > 0 (hw_flats.cpp:439). A zero-alpha colour silently
-	// switches the entire lane off with no error anywhere.
+	// FlatGlowColor.a > 0 (HWFlat::DrawFlat, hw_flats.cpp). A zero-alpha
+	// colour silently switches the entire lane off with no error anywhere.
 	clearscope static Color HSV(double h, double s, double v)
 	{
 		h = h - 360.0 * floor(h / 360.0);
@@ -126,9 +126,9 @@ class GITD_Util
 	// Deriving this instead of defaulting it to black is what makes the
 	// wall/flat corner ramp continuously with zero configuration -- give the
 	// wall's bottom glow and the floor's own glow the same far colour and the
-	// seam between them stops being an edge (mapdata.zs:578). Real light both
-	// dims and cools as it falls off, so this darkens, enriches slightly, and
-	// rotates a little toward blue.
+	// seam between them stops being an edge (Sector.SetGlowColorFar,
+	// mapdata.zs). Real light both dims and cools as it falls off, so this
+	// darkens, enriches slightly, and rotates a little toward blue.
 	clearscope static Color AutoFar(Color base)
 	{
 		double h, s, v;

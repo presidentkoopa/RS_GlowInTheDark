@@ -8,6 +8,15 @@
 // Every preset starts from Base(), which zeroes the whole per-pixel layer.
 // Without that, switching presets would leave the previous one's cells or
 // flow running underneath the new one's colours.
+//
+// SURFACE FIRST, THEN EVERYTHING ELSE. Every preset writes its surface
+// texture -- Tex, Flow, Cells, the three terms GITD_Textures owns -- before
+// anything else, and then stops if surfaceOnly is set. That split is what lets
+// Texture "From the preset" put back just the preset's own grain, flow and
+// cells. It used to re-run the whole preset instead, which rewrote the lanes,
+// the colour window, the wave and the liquids and threw away every slider
+// tuned since the preset was picked. Keep a new preset in the same order, or
+// its surface will not come back and its palette will.
 
 class GITD_Presets
 {
@@ -43,6 +52,9 @@ class GITD_Presets
 		GITD_Util.SetB("gitd_light_invert", darkGlowsMore);
 	}
 
+	// shape follows the menu's GITD_WaveShape list, which starts at 1. The
+	// engine draws 0 the same as 1, but a 0 in the cvar left the Shape row
+	// blank, so nothing here writes 0 any more.
 	static void Wave(double len, double speed, double sharp, int shape,
 		double reach, double bright, double colour,
 		double detune = 0.0, double seed = 0.0)
@@ -92,7 +104,7 @@ class GITD_Presets
 
 	// react is inert here by design -- it only scales the engine's
 	// fog-disturbance array, which this mod never populates. The throb comes
-	// from pulse/level. See vmthunks.cpp:4125.
+	// from pulse/level. See SetGlowReact in vmthunks.cpp.
 	// `rate` scales the beat independently of `level`. The engine works the
 	// throb's speed out from the level, so without this a preset that wanted a
 	// bright alarm had no way to ask for a slow one.
@@ -119,32 +131,321 @@ class GITD_Presets
 
 	// Neutral ground. Every preset starts here so none of them inherit the
 	// last one's leftovers.
-	static void Base()
+	static void Base(bool surfaceOnly)
 	{
-		Window(0, 360, 0.5, 0.85, 0.45, 0.9);
-		LightDir(true);
-		Wave(0, 1, 1, 0, 0, 0, 0, 0, 0);
-		Phase(0, 0, 0, 0);
 		Tex(0, 0.06, 0, 1);
 		Flow(0, 12, 1, 1);
 		Cells(0, 24, 1, 0.5);
+		if (surfaceOnly) return;
+
+		Window(0, 360, 0.5, 0.85, 0.45, 0.9);
+		LightDir(true);
+		Wave(0, 1, 1, 1, 0, 0, 0, 0, 0);
+		Phase(0, 0, 0, 0);
 		Throb(0, 0);
 		Origin(0);
 		GITD_Util.SetB("gitd_lock_planes", false);
 		Liquid(true, 0, 60, 220, 70, 150, 2, 1.2, true);
 	}
 
-	// ---- the eighteen ------------------------------------------------------
+	// surfaceOnly re-writes only the preset's Tex/Flow/Cells. See the note at
+	// the top of the file.
+	static void Apply(int idx, bool surfaceOnly = false)
+	{
+		Base(surfaceOnly);
 
-	// ---- five built on mechanisms the eighteen never touch --------------------
+		switch (idx)
+		{
+		case 0:  VanillaPlus(surfaceOnly);     break;
+		case 1:  Bioluminescent(surfaceOnly);  break;
+		case 2:  Reactor(surfaceOnly);         break;
+		case 3:  Neon(surfaceOnly);            break;
+		case 4:  Ember(surfaceOnly);           break;
+		case 5:  Frostbite(surfaceOnly);       break;
+		case 6:  Blacklight(surfaceOnly);      break;
+		case 7:  Cathedral(surfaceOnly);       break;
+		case 8:  PulseWave(surfaceOnly);       break;
+		case 9:  Hazard(surfaceOnly);          break;
+		case 10: Circuitry(surfaceOnly);       break;
+		case 11: DeepWater(surfaceOnly);       break;
+		case 12: Furnace(surfaceOnly);         break;
+		case 13: Hellscape(surfaceOnly);       break;
+		case 14: RedAlert(surfaceOnly);        break;
+		case 15: Spore(surfaceOnly);           break;
+		case 16: Signal(surfaceOnly);          break;
+		case 17: Prism(surfaceOnly);           break;
+		case 18: Ascent(surfaceOnly);          break;
+		case 19: Beacon(surfaceOnly);          break;
+		case 20: Trawler(surfaceOnly);         break;
+		case 21: Filament(surfaceOnly);        break;
+		case 22: Tide(surfaceOnly);            break;
+		default: VanillaPlus(surfaceOnly);     break;
+		}
+	}
+
+	// ---- 0-17: the first eighteen ------------------------------------------
+
+	// 0 -- signature: deliberately none. The restrained one.
+	static void VanillaPlus(bool surfaceOnly)
+	{
+		if (surfaceOnly) return;
+		Lane("gitd_wf", true,  0, 255, 170,  90,  56, 0, 0.60);
+		Lane("gitd_wc", true,  0, 150, 140, 120,  48, 0, 0.45);
+		Lane("gitd_fg", false, 0, 128, 128, 128,   0, 0, 0.00);
+		Lane("gitd_cg", false, 0, 128, 128, 128,   0, 0, 0.00);
+		Liquid(true, 0, 70, 210, 80, 120, 2, 1.0, true);
+	}
+
+	// 1 -- signature: cells, and the flat lanes carrying the look.
+	static void Bioluminescent(bool surfaceOnly)
+	{
+		Cells(0.70, 20.0, 0.25, 0.45);
+		if (surfaceOnly) return;
+		Window(150, 200, 0.55, 0.90, 0.40, 0.80);
+		Lane("gitd_wf", true,  2, 0, 0, 0,  40, 2, 0.50);
+		Lane("gitd_wc", false, 2, 0, 0, 0,   0, 0, 0.00);
+		Lane("gitd_fg", true,  2, 0, 0, 0, 140, 2, 1.20);
+		Lane("gitd_cg", true,  2, 0, 0, 0,  90, 2, 0.70);
+		Wave(220, 0.35, 0.6, 1, 0.30, 0.40, 0.20);
+		Liquid(true, 0, 40, 255, 190, 180, 2, 1.5, true);
+	}
+
+	// 2 -- signature: flow, plus a floor/ceiling phase offset so the light
+	// visibly climbs the room.
+	static void Reactor(bool surfaceOnly)
+	{
+		Flow(0.80, 44.0, 0.9, 1.4);
+		if (surfaceOnly) return;
+		Lane("gitd_wf", true, 0, 255, 140,  30,  80, 1, 1.30);
+		Lane("gitd_wc", true, 0, 255,  90,  20,  70, 1, 1.00);
+		Lane("gitd_fg", true, 0, 255, 120,  25, 110, 1, 1.10);
+		Lane("gitd_cg", true, 0, 200,  70,  15,  80, 1, 0.80);
+		Wave(160, 1.2, 1.0, 1, 0.35, 0.60, 0.15);
+		Phase(0.0, 0.5, 0.0, 0.5);
+		Liquid(true, 0, 255, 110, 20, 200, 1, 1.8, true);
+	}
+
+	// 3 -- signature: exponential falloff and near-max saturation. Hard edges.
+	static void Neon(bool surfaceOnly)
+	{
+		Tex(0.15, 0.070, 0.0, 1.6);
+		if (surfaceOnly) return;
+		Window(0, 360, 0.95, 1.00, 0.75, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  70, 3, 1.40);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  70, 3, 1.40);
+		Lane("gitd_fg", true, 1, 0, 0, 0,  80, 3, 1.40);
+		Lane("gitd_cg", true, 1, 0, 0, 0,  70, 3, 1.40);
+	}
+
+	// 4 -- signature: light-keyed inverted, so the darkest rooms burn warmest.
+	static void Ember(bool surfaceOnly)
+	{
+		Tex(0.35, 0.045, 0.15, 1.2);
+		if (surfaceOnly) return;
+		Window(10, 40, 0.70, 1.00, 0.25, 0.75);
+		LightDir(true);
+		Lane("gitd_wf", true,  3, 0, 0, 0,  60, 1, 1.00);
+		Lane("gitd_wc", true,  3, 0, 0, 0,  45, 1, 0.50);
+		Lane("gitd_fg", true,  3, 0, 0, 0, 120, 1, 0.90);
+		Lane("gitd_cg", false, 3, 0, 0, 0,   0, 0, 0.00);
+		Throb(0.25, 0.50);
+		Liquid(true, 0, 255, 90, 20, 180, 1, 1.5, true);
+	}
+
+	// 5 -- signature: sqrt falloff over a very long flat reach. Spreads wide
+	// and dies slowly, rather than hugging the wall.
+	static void Frostbite(bool surfaceOnly)
+	{
+		Cells(0.35, 32.0, 0.08, 0.70);
+		if (surfaceOnly) return;
+		Window(185, 215, 0.30, 0.60, 0.60, 1.00);
+		Lane("gitd_wf", true, 2, 0, 0, 0,  90, 2, 0.50);
+		Lane("gitd_wc", true, 2, 0, 0, 0,  90, 2, 0.50);
+		Lane("gitd_fg", true, 2, 0, 0, 0, 220, 2, 0.80);
+		Lane("gitd_cg", true, 2, 0, 0, 0, 160, 2, 0.60);
+		Liquid(true, 0, 150, 220, 255, 200, 2, 0.9, true);
+	}
+
+	// 6 -- signature: glow-texture contrast cranked, so lit detail pops and
+	// everything between it drops away.
+	static void Blacklight(bool surfaceOnly)
+	{
+		Tex(0.80, 0.085, 0.05, 3.0);
+		if (surfaceOnly) return;
+		Window(275, 300, 0.85, 1.00, 0.35, 0.85);
+		Lane("gitd_wf", true, 2, 0, 0, 0,  70, 3, 1.10);
+		Lane("gitd_wc", true, 2, 0, 0, 0,  70, 3, 1.10);
+		Lane("gitd_fg", true, 2, 0, 0, 0, 110, 3, 1.20);
+		Lane("gitd_cg", true, 2, 0, 0, 0,  90, 3, 0.90);
+		Liquid(true, 0, 190, 90, 255, 170, 3, 1.6, true);
+	}
+
+	// 7 -- signature: vertical asymmetry. Ceiling lanes only, tall reach,
+	// explicit deep-blue far colour. Light arrives from above.
+	static void Cathedral(bool surfaceOnly)
+	{
+		if (surfaceOnly) return;
+		Lane("gitd_wf", false, 0, 0, 0, 0,     0, 0, 0.00);
+		Lane("gitd_fg", false, 0, 0, 0, 0,     0, 0, 0.00);
+		Lane("gitd_wc", true,  0, 255, 205, 120, 200, 2, 1.10, 2, 12, 18, 60);
+		Lane("gitd_cg", true,  0, 255, 190, 110, 180, 2, 0.90, 2, 12, 18, 60);
+		Wave(400, 0.15, 0.5, 1, 0.20, 0.30, 0.10);
+		Liquid(true, 0, 120, 150, 255, 140, 2, 0.8, false);
+	}
+
+	// 8 -- signature: the wave origin tracks the player, so glow ripples
+	// outward from wherever you are standing. The one to show people in VR.
+	static void PulseWave(bool surfaceOnly)
+	{
+		if (surfaceOnly) return;
+		Window(190, 230, 0.60, 0.90, 0.50, 1.00);
+		Lane("gitd_wf", true, 0, 170, 220, 255,  70, 0, 1.00);
+		Lane("gitd_wc", true, 0, 170, 220, 255,  70, 0, 0.80);
+		Lane("gitd_fg", true, 0, 190, 235, 255, 130, 0, 1.10);
+		Lane("gitd_cg", true, 0, 150, 200, 255, 100, 0, 0.80);
+		Wave(120, 1.0, 1.8, 1, 0.50, 0.90, 0.40);
+		Origin(1);
+	}
+
+	// 9 -- signature: the liquid lane carries everything; the architecture is
+	// near-monochrome. Only what can hurt you glows.
+	static void Hazard(bool surfaceOnly)
+	{
+		if (surfaceOnly) return;
+		Lane("gitd_wf", true, 0, 70, 70, 72,  50, 0, 0.35);
+		Lane("gitd_wc", true, 0, 70, 70, 72,  50, 0, 0.30);
+		Lane("gitd_fg", true, 0, 64, 64, 66,  70, 0, 0.30);
+		Lane("gitd_cg", true, 0, 64, 64, 66,  60, 0, 0.25);
+		Liquid(true, 0, 90, 255, 60, 220, 3, 2.00, true);
+		Throb(0.20, 0.40, 0.60);
+	}
+
+	// 10 -- signature: flow at very tight spacing and high sharpness, so it
+	// reads as traces rather than as a gradient.
+	static void Circuitry(bool surfaceOnly)
+	{
+		Flow(1.00, 12.0, 0.9, 3.0);
+		Tex(0.10, 0.040, 0.0, 1.4);
+		if (surfaceOnly) return;
+		Window(165, 195, 0.70, 1.00, 0.50, 0.90);
+		Lane("gitd_wf", true, 2, 0, 0, 0,  60, 3, 1.10);
+		Lane("gitd_wc", true, 2, 0, 0, 0,  60, 3, 1.10);
+		Lane("gitd_fg", true, 2, 0, 0, 0,  90, 3, 1.20);
+		Lane("gitd_cg", true, 2, 0, 0, 0,  80, 3, 1.00);
+	}
+
+	// 11 -- signature: wave detune with a seed, so the bands lose phase with
+	// each other instead of marching in step. Light through moving water.
+	static void DeepWater(bool surfaceOnly)
+	{
+		Cells(0.20, 34.0, 0.12, 0.80);
+		if (surfaceOnly) return;
+		Window(195, 240, 0.50, 0.85, 0.35, 0.80);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  80, 1, 0.80);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  80, 1, 0.70);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 200, 1, 1.00);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 140, 1, 0.80);
+		Wave(300, 0.40, 0.7, 2, 0.60, 0.50, 0.50, 0.70, 12.0);
+	}
+
+	// 12 -- signature: light-keyed FORWARD (the opposite of Ember) plus a fast
+	// throb. Bright rooms run hottest.
+	static void Furnace(bool surfaceOnly)
+	{
+		Tex(0.25, 0.030, 0.30, 1.5);
+		if (surfaceOnly) return;
+		Window(0, 30, 0.85, 1.00, 0.40, 1.00);
+		LightDir(false);
+		Lane("gitd_wf", true, 3, 0, 0, 0,  75, 1, 1.30);
+		Lane("gitd_wc", true, 3, 0, 0, 0,  65, 1, 1.00);
+		Lane("gitd_fg", true, 3, 0, 0, 0, 130, 1, 1.20);
+		Lane("gitd_cg", true, 3, 0, 0, 0, 100, 1, 0.90);
+		Throb(0.50, 0.70, 0.35);
+		Liquid(true, 0, 255, 70, 15, 210, 1, 1.9, true);
+	}
+
+	// 13 -- signature: the far-colour ramp is the whole effect. Bright crimson
+	// at every seam bleeding out to near-black oxblood, mottled organic by
+	// cells and noise, with a long flat reach so floors look soaked rather
+	// than outlined. Nothing else in the set leans on the two-colour ramp.
+	static void Hellscape(bool surfaceOnly)
+	{
+		Cells(0.45, 22.0, 0.15, 0.55);
+		Tex(0.50, 0.055, 0.08, 1.8);
+		if (surfaceOnly) return;
+		Window(348, 8, 0.75, 1.00, 0.30, 0.80);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  90, 1, 1.20, 2, 26,  4,  6);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  70, 1, 0.90, 2, 20,  3,  5);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 200, 1, 1.30, 2, 30,  5,  7);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 120, 1, 0.90, 2, 18,  3,  5);
+		Liquid(true, 0, 200, 20, 25, 240, 1, 1.60, true);
+	}
+
+	// 14 -- signature: the throb IS the effect. No wave, no flow, no cells --
+	// nothing else moving, so the pulse has the room to itself. Exponential
+	// falloff on all four lanes hits hard and dies fast at the edges.
+	static void RedAlert(bool surfaceOnly)
+	{
+		if (surfaceOnly) return;
+		Lane("gitd_wf", true, 0, 255, 20, 25,  80, 3, 1.50);
+		Lane("gitd_wc", true, 0, 255, 20, 25,  80, 3, 1.50);
+		Lane("gitd_fg", true, 0, 255, 25, 30, 100, 3, 1.50);
+		Lane("gitd_cg", true, 0, 255, 20, 25,  90, 3, 1.40);
+		Throb(0.85, 0.90, 0.30);
+		Liquid(true, 0, 255, 40, 40, 160, 3, 1.7, true);
+	}
+
+	// 15 -- signature: cells dense, small and slow. Flat lanes only, low
+	// value. Grows on the ground rather than lighting the room.
+	static void Spore(bool surfaceOnly)
+	{
+		Cells(0.90, 12.0, 0.05, 0.25);
+		if (surfaceOnly) return;
+		Window(55, 85, 0.50, 0.80, 0.20, 0.50);
+		Lane("gitd_wf", false, 2, 0, 0, 0,   0, 0, 0.00);
+		Lane("gitd_wc", false, 2, 0, 0, 0,   0, 0, 0.00);
+		Lane("gitd_fg", true,  2, 0, 0, 0, 130, 2, 0.70);
+		Lane("gitd_cg", true,  2, 0, 0, 0,  90, 2, 0.45);
+		Liquid(true, 0, 140, 190, 60, 150, 2, 0.9, false);
+	}
+
+	// 16 -- signature: hard-banded wave with the wall's top and bottom half a
+	// cycle apart, so the band sweeps rather than pulses flat.
+	static void Signal(bool surfaceOnly)
+	{
+		if (surfaceOnly) return;
+		Lane("gitd_wf", true, 0, 255, 180, 40,  75, 3, 1.30);
+		Lane("gitd_wc", true, 0, 255, 180, 40,  75, 3, 1.30);
+		Lane("gitd_fg", true, 0, 255, 190, 60, 110, 3, 1.20);
+		Lane("gitd_cg", true, 0, 255, 170, 30,  90, 3, 1.00);
+		Wave(180, 0.85, 4.0, 1, 0.70, 1.00, 0.00);
+		Phase(0.0, 0.5, 0.25, 0.75);
+	}
+
+	// 17 -- signature: the full hue circle, but pulled right down in
+	// saturation and up in value. 1.1's "colourful maps" idea as pastel
+	// instead of as a rainbow assault -- and unlike 1.1, actually per sector.
+	static void Prism(bool surfaceOnly)
+	{
+		if (surfaceOnly) return;
+		Window(0, 360, 0.18, 0.35, 0.85, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  90, 0, 0.90);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  90, 0, 0.90);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 150, 0, 1.00);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 120, 0, 0.85);
+	}
+
+	// ---- 18-22: five built on mechanisms the first eighteen never touch ----
 
 	// 18 -- signature: the wave measures HEIGHT, not distance from a point.
 	// The crest is a horizontal plane sweeping up through the map, so a
 	// stairwell reads as one rising front rather than as four surfaces taking
 	// turns. Phase is deliberately flat -- per-channel offsets would break the
 	// single front into the sequence Reactor already does.
-	static void Ascent()
+	static void Ascent(bool surfaceOnly)
 	{
+		Tex(0.30, 0.075, 0.04, 1.6);
+		if (surfaceOnly) return;
 		Window(200, 260, 0.45, 0.75, 0.55, 1.00);
 		Lane("gitd_wf", true, 1, 0, 0, 0,  85, 2, 1.00);
 		Lane("gitd_wc", true, 1, 0, 0, 0,  85, 2, 0.90);
@@ -152,22 +453,22 @@ class GITD_Presets
 		Lane("gitd_cg", true, 1, 0, 0, 0, 120, 2, 0.85);
 		Wave(96, 0.55, 1.6, 5, 0.55, 0.75, 0.30);
 		Phase(0.0, 0.0, 0.0, 0.0);
-		Tex(0.30, 0.075, 0.04, 1.6);
 		Liquid(true, 0, 90, 170, 255, 170, 2, 1.10, true);
 	}
 
 	// 19 -- signature: ONE colour per sector across all four lanes, and no far
 	// ramp anywhere. Each room is a single flat lantern; the variation is
 	// between rooms and never between the surfaces of one.
-	static void Beacon()
+	static void Beacon(bool surfaceOnly)
 	{
+		Tex(0.22, 0.055, 0.03, 1.3);
+		if (surfaceOnly) return;
 		Window(20, 55, 0.55, 0.80, 0.60, 1.00);
 		Lane("gitd_wf", true, 1, 0, 0, 0, 110, 0, 0.95, 0);
 		Lane("gitd_wc", true, 1, 0, 0, 0,  90, 0, 0.80, 0);
 		Lane("gitd_fg", true, 1, 0, 0, 0, 170, 0, 1.05, 0);
 		Lane("gitd_cg", true, 1, 0, 0, 0, 140, 0, 0.85, 0);
 		GITD_Util.SetB("gitd_lock_planes", true);
-		Tex(0.22, 0.055, 0.03, 1.3);
 		// Long-hand rather than Liquid(), which forces a far ramp -- and the
 		// whole point here is that nothing ramps.
 		Lane("gitd_liq", true, 0, 255, 170, 80, 180, 0, 1.20, 0);
@@ -179,24 +480,26 @@ class GITD_Presets
 	// to its own material, so a metal grate glows the same colour map-wide; the
 	// walls are keyed to light level, so the room's own darkness sets their hue.
 	// Every other preset picks one policy and uses it on all four lanes.
-	static void Trawler()
+	static void Trawler(bool surfaceOnly)
 	{
+		Flow(0.45, 14.0, 0.35, 1.6);
+		Tex(0.18, 0.065, 0.03, 1.4);
+		if (surfaceOnly) return;
 		Window(140, 260, 0.40, 0.85, 0.35, 0.95);
 		LightDir(true);
 		Lane("gitd_wf", true, 3, 0, 0, 0,  70, 1, 0.85);
 		Lane("gitd_wc", true, 3, 0, 0, 0,  60, 1, 0.70);
 		Lane("gitd_fg", true, 2, 0, 0, 0, 165, 2, 1.15);
 		Lane("gitd_cg", true, 2, 0, 0, 0, 110, 2, 0.80);
-		Flow(0.45, 14.0, 0.35, 1.6);
-		Tex(0.18, 0.065, 0.03, 1.4);
 		Liquid(true, 0, 60, 200, 160, 190, 2, 1.30, true);
 	}
 
 	// 21 -- signature: reach cut to almost nothing with intensity pushed past
 	// two, so every seam is a hot wire rather than a band and the room is drawn
 	// as line art. The only preset whose glow stops being illumination.
-	static void Filament()
+	static void Filament(bool surfaceOnly)
 	{
+		if (surfaceOnly) return;
 		Window(0, 360, 0.90, 1.00, 0.90, 1.00);
 		Lane("gitd_wf", true, 1, 0, 0, 0, 18, 3, 2.80);
 		Lane("gitd_wc", true, 1, 0, 0, 0, 14, 3, 2.60);
@@ -210,8 +513,10 @@ class GITD_Presets
 	// the colour boundary only, so no edge ever travels -- the room breathes
 	// without anything moving. Spherical distance, so it crosses floor, wall
 	// and ceiling as one surface instead of arriving per plane.
-	static void Tide()
+	static void Tide(bool surfaceOnly)
 	{
+		Cells(0.30, 26.0, 0.06, 0.62);
+		if (surfaceOnly) return;
 		Window(165, 205, 0.35, 0.65, 0.50, 0.95);
 		Lane("gitd_wf", true, 2, 0, 0, 0, 110, 2, 0.90);
 		Lane("gitd_wc", true, 2, 0, 0, 0, 100, 2, 0.75);
@@ -219,272 +524,6 @@ class GITD_Presets
 		Lane("gitd_cg", true, 2, 0, 0, 0, 180, 2, 0.80);
 		Wave(520, 0.18, 1.2, 4, 0.0, 0.85, 0.65, 0.55, 1.0);
 		Phase(0.0, 0.15, 0.30, 0.45);
-		Cells(0.30, 26.0, 0.06, 0.62);
 		Liquid(true, 0, 70, 210, 200, 220, 2, 1.20, true);
-	}
-
-	static void Apply(int idx)
-	{
-		Base();
-
-		switch (idx)
-		{
-		case 0:  VanillaPlus();     break;
-		case 1:  Bioluminescent();  break;
-		case 2:  Reactor();         break;
-		case 3:  Neon();            break;
-		case 4:  Ember();           break;
-		case 5:  Frostbite();       break;
-		case 6:  Blacklight();      break;
-		case 7:  Cathedral();       break;
-		case 8:  PulseWave();       break;
-		case 9:  Hazard();          break;
-		case 10: Circuitry();       break;
-		case 11: DeepWater();       break;
-		case 12: Furnace();         break;
-		case 13: Hellscape();       break;
-		case 14: RedAlert();        break;
-		case 15: Spore();           break;
-		case 16: Signal();          break;
-		case 17: Prism();           break;
-		case 18: Ascent();          break;
-		case 19: Beacon();          break;
-		case 20: Trawler();         break;
-		case 21: Filament();        break;
-		case 22: Tide();            break;
-		default: VanillaPlus();     break;
-		}
-	}
-
-	// 0 -- signature: deliberately none. The restrained one.
-	static void VanillaPlus()
-	{
-		Lane("gitd_wf", true,  0, 255, 170,  90,  56, 0, 0.60);
-		Lane("gitd_wc", true,  0, 150, 140, 120,  48, 0, 0.45);
-		Lane("gitd_fg", false, 0, 128, 128, 128,   0, 0, 0.00);
-		Lane("gitd_cg", false, 0, 128, 128, 128,   0, 0, 0.00);
-		Liquid(true, 0, 70, 210, 80, 120, 2, 1.0, true);
-	}
-
-	// 1 -- signature: cells, and the flat lanes carrying the look.
-	static void Bioluminescent()
-	{
-		Window(150, 200, 0.55, 0.90, 0.40, 0.80);
-		Lane("gitd_wf", true,  2, 0, 0, 0,  40, 2, 0.50);
-		Lane("gitd_wc", false, 2, 0, 0, 0,   0, 0, 0.00);
-		Lane("gitd_fg", true,  2, 0, 0, 0, 140, 2, 1.20);
-		Lane("gitd_cg", true,  2, 0, 0, 0,  90, 2, 0.70);
-		Cells(0.70, 20.0, 0.25, 0.45);
-		Wave(220, 0.35, 0.6, 0, 0.30, 0.40, 0.20);
-		Liquid(true, 0, 40, 255, 190, 180, 2, 1.5, true);
-	}
-
-	// 2 -- signature: flow, plus a floor/ceiling phase offset so the light
-	// visibly climbs the room.
-	static void Reactor()
-	{
-		Lane("gitd_wf", true, 0, 255, 140,  30,  80, 1, 1.30);
-		Lane("gitd_wc", true, 0, 255,  90,  20,  70, 1, 1.00);
-		Lane("gitd_fg", true, 0, 255, 120,  25, 110, 1, 1.10);
-		Lane("gitd_cg", true, 0, 200,  70,  15,  80, 1, 0.80);
-		Flow(0.80, 44.0, 0.9, 1.4);
-		Wave(160, 1.2, 1.0, 1, 0.35, 0.60, 0.15);
-		Phase(0.0, 0.5, 0.0, 0.5);
-		Liquid(true, 0, 255, 110, 20, 200, 1, 1.8, true);
-	}
-
-	// 3 -- signature: exponential falloff and near-max saturation. Hard edges.
-	static void Neon()
-	{
-		Window(0, 360, 0.95, 1.00, 0.75, 1.00);
-		Lane("gitd_wf", true, 1, 0, 0, 0,  70, 3, 1.40);
-		Lane("gitd_wc", true, 1, 0, 0, 0,  70, 3, 1.40);
-		Lane("gitd_fg", true, 1, 0, 0, 0,  80, 3, 1.40);
-		Lane("gitd_cg", true, 1, 0, 0, 0,  70, 3, 1.40);
-		Tex(0.15, 0.070, 0.0, 1.6);
-	}
-
-	// 4 -- signature: light-keyed inverted, so the darkest rooms burn warmest.
-	static void Ember()
-	{
-		Window(10, 40, 0.70, 1.00, 0.25, 0.75);
-		LightDir(true);
-		Lane("gitd_wf", true,  3, 0, 0, 0,  60, 1, 1.00);
-		Lane("gitd_wc", true,  3, 0, 0, 0,  45, 1, 0.50);
-		Lane("gitd_fg", true,  3, 0, 0, 0, 120, 1, 0.90);
-		Lane("gitd_cg", false, 3, 0, 0, 0,   0, 0, 0.00);
-		Tex(0.35, 0.045, 0.15, 1.2);
-		Throb(0.25, 0.50);
-		Liquid(true, 0, 255, 90, 20, 180, 1, 1.5, true);
-	}
-
-	// 5 -- signature: sqrt falloff over a very long flat reach. Spreads wide
-	// and dies slowly, rather than hugging the wall.
-	static void Frostbite()
-	{
-		Window(185, 215, 0.30, 0.60, 0.60, 1.00);
-		Lane("gitd_wf", true, 2, 0, 0, 0,  90, 2, 0.50);
-		Lane("gitd_wc", true, 2, 0, 0, 0,  90, 2, 0.50);
-		Lane("gitd_fg", true, 2, 0, 0, 0, 220, 2, 0.80);
-		Lane("gitd_cg", true, 2, 0, 0, 0, 160, 2, 0.60);
-		Cells(0.35, 32.0, 0.08, 0.70);
-		Liquid(true, 0, 150, 220, 255, 200, 2, 0.9, true);
-	}
-
-	// 6 -- signature: glow-texture contrast cranked, so lit detail pops and
-	// everything between it drops away.
-	static void Blacklight()
-	{
-		Window(275, 300, 0.85, 1.00, 0.35, 0.85);
-		Lane("gitd_wf", true, 2, 0, 0, 0,  70, 3, 1.10);
-		Lane("gitd_wc", true, 2, 0, 0, 0,  70, 3, 1.10);
-		Lane("gitd_fg", true, 2, 0, 0, 0, 110, 3, 1.20);
-		Lane("gitd_cg", true, 2, 0, 0, 0,  90, 3, 0.90);
-		Tex(0.80, 0.085, 0.05, 3.0);
-		Liquid(true, 0, 190, 90, 255, 170, 3, 1.6, true);
-	}
-
-	// 7 -- signature: vertical asymmetry. Ceiling lanes only, tall reach,
-	// explicit deep-blue far colour. Light arrives from above.
-	static void Cathedral()
-	{
-		Lane("gitd_wf", false, 0, 0, 0, 0,     0, 0, 0.00);
-		Lane("gitd_fg", false, 0, 0, 0, 0,     0, 0, 0.00);
-		Lane("gitd_wc", true,  0, 255, 205, 120, 200, 2, 1.10, 2, 12, 18, 60);
-		Lane("gitd_cg", true,  0, 255, 190, 110, 180, 2, 0.90, 2, 12, 18, 60);
-		Wave(400, 0.15, 0.5, 0, 0.20, 0.30, 0.10);
-		Liquid(true, 0, 120, 150, 255, 140, 2, 0.8, false);
-	}
-
-	// 8 -- signature: the wave origin tracks the player, so glow ripples
-	// outward from wherever you are standing. The one to show people in VR.
-	static void PulseWave()
-	{
-		Window(190, 230, 0.60, 0.90, 0.50, 1.00);
-		Lane("gitd_wf", true, 0, 170, 220, 255,  70, 0, 1.00);
-		Lane("gitd_wc", true, 0, 170, 220, 255,  70, 0, 0.80);
-		Lane("gitd_fg", true, 0, 190, 235, 255, 130, 0, 1.10);
-		Lane("gitd_cg", true, 0, 150, 200, 255, 100, 0, 0.80);
-		Wave(120, 1.0, 1.8, 0, 0.50, 0.90, 0.40);
-		Origin(1);
-	}
-
-	// 9 -- signature: the liquid lane carries everything; the architecture is
-	// near-monochrome. Only what can hurt you glows.
-	static void Hazard()
-	{
-		Lane("gitd_wf", true, 0, 70, 70, 72,  50, 0, 0.35);
-		Lane("gitd_wc", true, 0, 70, 70, 72,  50, 0, 0.30);
-		Lane("gitd_fg", true, 0, 64, 64, 66,  70, 0, 0.30);
-		Lane("gitd_cg", true, 0, 64, 64, 66,  60, 0, 0.25);
-		Liquid(true, 0, 90, 255, 60, 220, 3, 2.00, true);
-		Throb(0.20, 0.40, 0.60);
-	}
-
-	// 10 -- signature: flow at very tight spacing and high sharpness, so it
-	// reads as traces rather than as a gradient.
-	static void Circuitry()
-	{
-		Window(165, 195, 0.70, 1.00, 0.50, 0.90);
-		Lane("gitd_wf", true, 2, 0, 0, 0,  60, 3, 1.10);
-		Lane("gitd_wc", true, 2, 0, 0, 0,  60, 3, 1.10);
-		Lane("gitd_fg", true, 2, 0, 0, 0,  90, 3, 1.20);
-		Lane("gitd_cg", true, 2, 0, 0, 0,  80, 3, 1.00);
-		Flow(1.00, 12.0, 0.9, 3.0);
-		Tex(0.10, 0.040, 0.0, 1.4);
-	}
-
-	// 11 -- signature: wave detune with a seed, so the bands lose phase with
-	// each other instead of marching in step. Light through moving water.
-	static void DeepWater()
-	{
-		Window(195, 240, 0.50, 0.85, 0.35, 0.80);
-		Lane("gitd_wf", true, 1, 0, 0, 0,  80, 1, 0.80);
-		Lane("gitd_wc", true, 1, 0, 0, 0,  80, 1, 0.70);
-		Lane("gitd_fg", true, 1, 0, 0, 0, 200, 1, 1.00);
-		Lane("gitd_cg", true, 1, 0, 0, 0, 140, 1, 0.80);
-		Wave(300, 0.40, 0.7, 2, 0.60, 0.50, 0.50, 0.70, 12.0);
-		Cells(0.20, 34.0, 0.12, 0.80);
-	}
-
-	// 12 -- signature: light-keyed FORWARD (the opposite of Ember) plus a fast
-	// throb. Bright rooms run hottest.
-	static void Furnace()
-	{
-		Window(0, 30, 0.85, 1.00, 0.40, 1.00);
-		LightDir(false);
-		Lane("gitd_wf", true, 3, 0, 0, 0,  75, 1, 1.30);
-		Lane("gitd_wc", true, 3, 0, 0, 0,  65, 1, 1.00);
-		Lane("gitd_fg", true, 3, 0, 0, 0, 130, 1, 1.20);
-		Lane("gitd_cg", true, 3, 0, 0, 0, 100, 1, 0.90);
-		Tex(0.25, 0.030, 0.30, 1.5);
-		Throb(0.50, 0.70, 0.35);
-		Liquid(true, 0, 255, 70, 15, 210, 1, 1.9, true);
-	}
-
-	// 13 -- signature: the far-colour ramp is the whole effect. Bright crimson
-	// at every seam bleeding out to near-black oxblood, mottled organic by
-	// cells and noise, with a long flat reach so floors look soaked rather
-	// than outlined. Nothing else in the set leans on the two-colour ramp.
-	static void Hellscape()
-	{
-		Window(348, 8, 0.75, 1.00, 0.30, 0.80);
-		Lane("gitd_wf", true, 1, 0, 0, 0,  90, 1, 1.20, 2, 26,  4,  6);
-		Lane("gitd_wc", true, 1, 0, 0, 0,  70, 1, 0.90, 2, 20,  3,  5);
-		Lane("gitd_fg", true, 1, 0, 0, 0, 200, 1, 1.30, 2, 30,  5,  7);
-		Lane("gitd_cg", true, 1, 0, 0, 0, 120, 1, 0.90, 2, 18,  3,  5);
-		Cells(0.45, 22.0, 0.15, 0.55);
-		Tex(0.50, 0.055, 0.08, 1.8);
-		Liquid(true, 0, 200, 20, 25, 240, 1, 1.60, true);
-	}
-
-	// 14 -- signature: the throb IS the effect. No wave, no flow, no cells --
-	// nothing else moving, so the pulse has the room to itself. Exponential
-	// falloff on all four lanes hits hard and dies fast at the edges.
-	static void RedAlert()
-	{
-		Lane("gitd_wf", true, 0, 255, 20, 25,  80, 3, 1.50);
-		Lane("gitd_wc", true, 0, 255, 20, 25,  80, 3, 1.50);
-		Lane("gitd_fg", true, 0, 255, 25, 30, 100, 3, 1.50);
-		Lane("gitd_cg", true, 0, 255, 20, 25,  90, 3, 1.40);
-		Throb(0.85, 0.90, 0.30);
-		Liquid(true, 0, 255, 40, 40, 160, 3, 1.7, true);
-	}
-
-	// 15 -- signature: cells dense, small and slow. Flat lanes only, low
-	// value. Grows on the ground rather than lighting the room.
-	static void Spore()
-	{
-		Window(55, 85, 0.50, 0.80, 0.20, 0.50);
-		Lane("gitd_wf", false, 2, 0, 0, 0,   0, 0, 0.00);
-		Lane("gitd_wc", false, 2, 0, 0, 0,   0, 0, 0.00);
-		Lane("gitd_fg", true,  2, 0, 0, 0, 130, 2, 0.70);
-		Lane("gitd_cg", true,  2, 0, 0, 0,  90, 2, 0.45);
-		Cells(0.90, 12.0, 0.05, 0.25);
-		Liquid(true, 0, 140, 190, 60, 150, 2, 0.9, false);
-	}
-
-	// 16 -- signature: hard-banded wave with the wall's top and bottom half a
-	// cycle apart, so the band sweeps rather than pulses flat.
-	static void Signal()
-	{
-		Lane("gitd_wf", true, 0, 255, 180, 40,  75, 3, 1.30);
-		Lane("gitd_wc", true, 0, 255, 180, 40,  75, 3, 1.30);
-		Lane("gitd_fg", true, 0, 255, 190, 60, 110, 3, 1.20);
-		Lane("gitd_cg", true, 0, 255, 170, 30,  90, 3, 1.00);
-		Wave(180, 0.85, 4.0, 1, 0.70, 1.00, 0.00);
-		Phase(0.0, 0.5, 0.25, 0.75);
-	}
-
-	// 17 -- signature: the full hue circle, but pulled right down in
-	// saturation and up in value. 1.1's "colourful maps" idea as pastel
-	// instead of as a rainbow assault -- and unlike 1.1, actually per sector.
-	static void Prism()
-	{
-		Window(0, 360, 0.18, 0.35, 0.85, 1.00);
-		Lane("gitd_wf", true, 1, 0, 0, 0,  90, 0, 0.90);
-		Lane("gitd_wc", true, 1, 0, 0, 0,  90, 0, 0.90);
-		Lane("gitd_fg", true, 1, 0, 0, 0, 150, 0, 1.00);
-		Lane("gitd_cg", true, 1, 0, 0, 0, 120, 0, 0.85);
 	}
 }
