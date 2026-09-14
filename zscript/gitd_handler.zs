@@ -123,15 +123,21 @@ class GITD_Handler : EventHandler
 	const SALT_FG = 3;
 	const SALT_CG = 4;
 
+	// The parts of a sector another mod has claimed -- see the claims block
+	// below. The same numbers RS_Sweeps' RSS_SectorClaim writes into args[1].
+	const CLAIM_WALLS = 1;
+	const CLAIM_FLATS = 2;
+
 	// TRANSIENT, EVERY ONE OF THEM. An EventHandler is written into the
-	// savegame field by field, and the save keeps only each plane's glow colour
-	// and height -- not the far colour, falloff, intensity, or any of the flat
-	// glow. With these saved, a loaded game (or a hub return) came back with
-	// the same map signature and settings hash, so nothing re-applied and the
-	// floors and ceilings stayed dark until a slider moved. Transient fields
-	// come back empty, the signature no longer matches, and the whole map is
-	// written again in a few tics. It also keeps four ints per sector out of
-	// every save.
+	// savegame field by field. The engine now saves every glow field of every
+	// plane -- colour, height, far colour, falloff, intensity and the whole
+	// flat glow (p_saveg.cpp, the plane serializer) -- so a loaded game comes
+	// back looking the way it was saved. These stay transient anyway: a load
+	// (or a hub return) comes back with them empty, the signature no longer
+	// matches, and the whole map is written again in a few tics. That rebuilds
+	// the lanes, ranges and watch history this side keeps, repaints a save made
+	// before the engine kept the rest of the glow, and keeps four ints per
+	// sector out of every save.
 	private ui transient bool applying;
 	private ui transient int applyCursor;
 	private ui transient uint lastHash;
@@ -180,6 +186,31 @@ class GITD_Handler : EventHandler
 	private ui transient Array<int> seenLight, seenFloorTex, seenCeilTex;
 	private ui transient int watchTimer;
 	private ui transient bool lightKeyed, texKeyed;
+
+	// SECTORS ANOTHER MOD HAS CLAIMED.
+	//
+	// RS_Sweeps' glow effects repaint the rooms a sweep crosses in its own
+	// colour, and that colour is meant to stay. This mod repaints every sector
+	// on any settings change and on the light and flat watch above, which put
+	// GITD's colour straight back within a second. So a sweep leaves a claim,
+	// and the apply and ClearAll pass the claimed parts by.
+	//
+	// NO LINK TO THAT MOD. The claim is a client-side actor of a class looked up
+	// from a string at run time, and only base Actor fields are read:
+	// args[0] the sector index, args[1] CLAIM_WALLS and/or CLAIM_FLATS. The
+	// contract is written out on RSS_SectorClaim in RS_Sweeps. With RS_Sweeps
+	// absent the class is not found, nothing is gathered, and every sector is
+	// painted exactly as before.
+	//
+	// UI SCOPE READS PLAY DATA. The claims are client-side actors made on the
+	// play side; reading one from here is allowed, because only ui fields are
+	// barred to other scopes (scopebarrier.cpp AddFlags), and ThinkerIterator
+	// is plain data, callable from any scope. Nothing here writes to them.
+	//
+	// claimedParts is per sector; claimedHeld counts the claimed parts it holds,
+	// so the watch can tell a claim let go from a claim added.
+	private ui transient Array<int> claimedParts;
+	private ui transient int claimedHeld;
 
 	// Which map the ui side last applied to. See UiTick.
 	private ui transient String mapSig;
@@ -410,6 +441,15 @@ class GITD_Handler : EventHandler
 	// Both callers are kept rather than UiTick alone: pushing twice a tic
 	// costs about thirty CVar lookups and guarantees the feature works even if
 	// UiTick is gated somewhere unexpected.
+	//
+	// Every per-pixel slider is read here, and UiTick runs it, so they move the
+	// picture while the menu is open. Declared for menu_lint's live-page check:
+	// LINT-UI-LIVE: gitd_speed gitd_pulse_rate gitd_wave_len gitd_wave_speed gitd_wave_sharp
+	// LINT-UI-LIVE: gitd_wave_reach gitd_wave_bright gitd_wave_colour gitd_wave_detune gitd_wave_seed
+	// LINT-UI-LIVE: gitd_wave_ph_wtop gitd_wave_ph_wbot gitd_wave_ph_floor gitd_wave_ph_ceil
+	// LINT-UI-LIVE: gitd_tex_noise gitd_tex_scale gitd_tex_drift gitd_tex_contrast
+	// LINT-UI-LIVE: gitd_flow gitd_flow_spacing gitd_flow_speed gitd_flow_sharp
+	// LINT-UI-LIVE: gitd_cell gitd_cell_scale gitd_cell_speed gitd_cell_width gitd_pulse gitd_pulse_level gitd_react
 	clearscope void PushGlobals()
 	{
 		if (!Level) return;
@@ -543,6 +583,9 @@ class GITD_Handler : EventHandler
 			seenFloorTex.Clear();
 			seenCeilTex.Clear();
 			watchTimer = WATCH_TICS;
+			// Nor do its claims.
+			claimedParts.Clear();
+			claimedHeld = 0;
 		}
 
 		if (!wasEnabled)
@@ -563,10 +606,14 @@ class GITD_Handler : EventHandler
 			}
 		}
 
+		// Both looks run every time. Neither may short-circuit the other: each
+		// also brings its own record up to date.
 		if (!applying && --watchTimer <= 0)
 		{
 			watchTimer = WATCH_TICS;
-			if (WatchSectors()) BeginApply();
+			bool sectorsMoved = WatchSectors();
+			bool claimLetGo = WatchClaims();
+			if (sectorsMoved || claimLetGo) BeginApply();
 		}
 
 		if (applying) StepApply();
@@ -657,6 +704,15 @@ class GITD_Handler : EventHandler
 		if (!laneLiq) laneLiq = GITD_Lane.FromCVars("gitd_liq");
 	}
 
+	// The lane and randomiser sliders reach the map through this apply, and
+	// UiTick starts and steps it -- the map re-tints under the menu within a
+	// few tics of a drag. Declared for menu_lint's live-page check:
+	// LINT-UI-LIVE: gitd_wf_color gitd_wf_reach gitd_wf_intensity gitd_wf_farcolor
+	// LINT-UI-LIVE: gitd_wc_color gitd_wc_reach gitd_wc_intensity gitd_wc_farcolor
+	// LINT-UI-LIVE: gitd_fg_color gitd_fg_reach gitd_fg_intensity gitd_fg_farcolor
+	// LINT-UI-LIVE: gitd_cg_color gitd_cg_reach gitd_cg_intensity gitd_cg_farcolor
+	// LINT-UI-LIVE: gitd_liq_color gitd_liq_reach gitd_liq_intensity gitd_liq_farcolor
+	// LINT-UI-LIVE: gitd_wall_blend gitd_hue_min gitd_hue_max gitd_sat_min gitd_sat_max gitd_val_min gitd_val_max gitd_seed
 	ui void BeginApply()
 	{
 		// Nothing to apply into yet. UiTick fires before a level has ever
@@ -736,6 +792,11 @@ class GITD_Handler : EventHandler
 			return;
 		}
 
+		// CLAIMS ARE READ HERE, at the top of each write chunk: once per apply on
+		// any map of up to APPLY_CHUNK sectors, and never once per sector. Not in
+		// BeginApply -- the resolve pass runs a tic or more before the write, and
+		// a sweep crossing a room in between would have that room painted over.
+		GatherClaims();
 		for (int i = applyCursor; i < end; i++)
 		{
 			ApplySector(Level.Sectors[i], i);
@@ -807,6 +868,11 @@ class GITD_Handler : EventHandler
 	ui void ApplySector(Sector sec, int idx)
 	{
 		if (!sec) return;
+
+		// A part another mod has claimed is left exactly as that mod painted it.
+		// A fully claimed sector needs nothing worked out at all.
+		int claimed = ClaimedAt(idx);
+		if (claimed == (CLAIM_WALLS | CLAIM_FLATS)) return;
 
 		// Liquid floors take their own config instead of the general floor
 		// policy. This is what replaces 1.1's gldefs.bm, and it does the thing
@@ -891,10 +957,16 @@ class GITD_Handler : EventHandler
 			}
 		}
 
-		ApplyWallLane(sec, Sector.floor,   wfOn, cWF, fWF, rWF, kWF, iWF);
-		ApplyWallLane(sec, Sector.ceiling, wcOn, cWC, fWC, rWC, kWC, iWC);
-		ApplyFlatLane(sec, Sector.floor,   fgOn, cFG, fFG, rFG, kFG, iFG);
-		ApplyFlatLane(sec, Sector.ceiling, cgOn, cCG, fCG, rCG, kCG, iCG);
+		if (!(claimed & CLAIM_WALLS))
+		{
+			ApplyWallLane(sec, Sector.floor,   wfOn, cWF, fWF, rWF, kWF, iWF);
+			ApplyWallLane(sec, Sector.ceiling, wcOn, cWC, fWC, rWC, kWC, iWC);
+		}
+		if (!(claimed & CLAIM_FLATS))
+		{
+			ApplyFlatLane(sec, Sector.floor,   fgOn, cFG, fFG, rFG, kFG, iFG);
+			ApplyFlatLane(sec, Sector.ceiling, cgOn, cCG, fCG, rCG, kCG, iCG);
+		}
 	}
 
 	ui double LaneReach(GITD_Lane ln) { return ln ? ln.reach : 0.0; }
@@ -948,23 +1020,37 @@ class GITD_Handler : EventHandler
 		sec.SetFlatGlowIntensity(planePos, inten);
 	}
 
+	// Turning the mod off clears what it painted -- and ONLY what it painted. A
+	// claimed part carries another mod's colour and stays when this one goes:
+	// wiping a sweep's rooms because GITD was switched off was the other half
+	// of the fight. The claims are read once, here. They are not let go of: a
+	// claim belongs to the mod that made it, and GITD switched back on skips
+	// the same parts again.
 	ui void ClearAll()
 	{
 		if (!Level) return;
+		GatherClaims();
 
 		for (int i = 0; i < Level.Sectors.Size(); i++)
 		{
 			let sec = Level.Sectors[i];
 			if (!sec) continue;
+			int claimed = ClaimedAt(i);
 
 			for (int p = 0; p <= 1; p++)
 			{
-				sec.SetGlowColor(p, Color(0, 0, 0, 0));
-				sec.SetGlowColorFar(p, Color(0, 0, 0, 0));
-				sec.SetGlowHeight(p, 0.0);
-				sec.SetFlatGlowColor(p, Color(0, 0, 0, 0));
-				sec.SetFlatGlowColorFar(p, Color(0, 0, 0, 0));
-				sec.SetFlatGlowHeight(p, 0.0);
+				if (!(claimed & CLAIM_WALLS))
+				{
+					sec.SetGlowColor(p, Color(0, 0, 0, 0));
+					sec.SetGlowColorFar(p, Color(0, 0, 0, 0));
+					sec.SetGlowHeight(p, 0.0);
+				}
+				if (!(claimed & CLAIM_FLATS))
+				{
+					sec.SetFlatGlowColor(p, Color(0, 0, 0, 0));
+					sec.SetFlatGlowColorFar(p, Color(0, 0, 0, 0));
+					sec.SetFlatGlowHeight(p, 0.0);
+				}
 			}
 		}
 
@@ -1040,6 +1126,77 @@ class GITD_Handler : EventHandler
 			}
 		}
 		return moved;
+	}
+
+	// ---- claims ------------------------------------------------------------
+
+	// The claim markers, or null when no mod that makes them is loaded. The
+	// class is looked up from a String VARIABLE on purpose: a class named in a
+	// literal is resolved while compiling, and would make this mod refuse to
+	// load without RS_Sweeps. See the claims note on the fields.
+	ui ThinkerIterator ClaimIterator()
+	{
+		String cname = "RSS_SectorClaim";
+		Class<Actor> cls = cname;
+		if (!cls) return null;
+		return ThinkerIterator.Create(cls, Thinker.STAT_INFO, true);
+	}
+
+	// Every claim, read into claimedParts. Called once per write chunk and once
+	// per ClearAll -- never per sector.
+	ui void GatherClaims()
+	{
+		claimedParts.Clear();
+		claimedHeld = 0;
+		let it = ClaimIterator();
+		if (!it || !Level) return;
+
+		int n = Level.Sectors.Size();
+		claimedParts.Resize(n);
+		Actor a;
+		while (a = Actor(it.Next()))
+		{
+			int idx = a.args[0];
+			if (idx < 0 || idx >= n) continue;
+			int fresh = a.args[1] & (CLAIM_WALLS | CLAIM_FLATS) & ~claimedParts[idx];
+			claimedParts[idx] |= fresh;
+			claimedHeld += PartCount(fresh);
+		}
+	}
+
+	ui int ClaimedAt(int idx)
+	{
+		return (idx >= 0 && idx < claimedParts.Size()) ? claimedParts[idx] : 0;
+	}
+
+	ui int PartCount(int parts)
+	{
+		return ((parts & CLAIM_WALLS) != 0 ? 1 : 0) + ((parts & CLAIM_FLATS) != 0 ? 1 : 0);
+	}
+
+	// True when a part claimed at the last gather has been let go -- the sweep's
+	// glow effect was switched off -- and the map needs applying again to put
+	// this mod's colour back there. Claims that were only ADDED need no apply:
+	// the sweep painted those itself. They are read in all the same, so letting
+	// one of them go later is noticed too.
+	ui bool WatchClaims()
+	{
+		let it = ClaimIterator();
+		if (!it) return false;
+
+		int n = claimedParts.Size();
+		int held = 0, total = 0;
+		Actor a;
+		while (a = Actor(it.Next()))
+		{
+			int parts = a.args[1] & (CLAIM_WALLS | CLAIM_FLATS);
+			total += PartCount(parts);
+			int idx = a.args[0];
+			if (idx >= 0 && idx < n) held += PartCount(parts & claimedParts[idx]);
+		}
+		if (held < claimedHeld) return true;      // the apply gathers afresh
+		if (total != claimedHeld) GatherClaims();
+		return false;
 	}
 
 	// ---- change detection --------------------------------------------------

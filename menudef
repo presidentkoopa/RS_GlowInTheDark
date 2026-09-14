@@ -4,6 +4,13 @@
 // about a fifth of a second; the wave and surface-detail pages take effect on
 // the next tic.
 
+// menu_lint (tools\menu_lint.py) holds every page with a slider to the
+// live-slider rule: each slider has to move the glow while the menu is open.
+// Here that is two UiTick paths -- PushGlobals for the wave, surface detail
+// and speeds, and the lane apply for the lanes, liquids and randomiser. See
+// the LINT-UI-LIVE lines beside PushGlobals and BeginApply in gitd_handler.zs.
+// LINT-LIVE: GITDMain GITDLaneWF GITDLaneWC GITDLaneFG GITDLaneCG GITDLiquid GITDRandom GITDWave GITDDetail
+
 OptionValue "GITD_WaveShape"
 {
 	1, "Radial (ground plane)"

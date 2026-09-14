@@ -140,14 +140,30 @@ per-pixel layer (Wave, Surface Detail, the alarm) and the four lanes alike.
 Drag a lane or cells slider with the menu up and the map re-tints under it.
 That is what the fork's clearscope declarations on the glow setters are for.
 
+RS_SWEEPS
+---------
+
+A sweep's glow effects repaint the rooms it crosses in the sweep's colour, and
+that colour is meant to stay. This mod passes those rooms by -- on a settings
+change, on the light and flat watch, and when it is switched off -- so the two
+no longer fight. Only the parts the sweep painted are skipped: a sweep that
+left the walls alone leaves them to this mod.
+
+The sweep leaves a claim marker per room, found here by class name at run
+time, so neither mod needs the other loaded. Switch the sweep's glow effect off
+and its claims go; within about a second this mod repaints those rooms in its
+own colours.
+
 SAVES
 -----
 
-A savegame keeps only each plane's wall glow colour and height; the far
-colours, falloff, intensity and all flat glow are not saved by the engine. On
-load the mod re-applies the whole map, so floors and ceilings are dark for the
-few tics that takes. Loading a save also keeps the preset and tuning the save
-was made with -- it is not treated as a preset change -- and a load or hub
+A savegame keeps every glow field of every floor and ceiling: colour, height,
+far colour, falloff, intensity and all of the flat glow. A loaded game comes
+back looking the way it was saved. The mod still re-applies the whole map on
+load, which repaints the same colours; a save made with an older engine, which
+kept only the wall glow colour and height, has its floors and ceilings dark for
+the few tics that takes. Loading a save also keeps the preset and tuning the
+save was made with -- it is not treated as a preset change -- and a load or hub
 return never shuffles.
 
 RANDOMIZE ON DEATH
