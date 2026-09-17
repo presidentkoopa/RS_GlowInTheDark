@@ -1,4 +1,4 @@
-GlowInTheDark 2.0
+GlowInTheDark 4.x
 =================
 
 A ZScript rewrite of GlowInTheDark 1.1 (PresidentKoopa, 2021) for UZDXREMA.
