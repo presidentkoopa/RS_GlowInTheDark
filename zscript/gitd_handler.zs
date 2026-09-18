@@ -109,7 +109,7 @@ class GITD_Handler : EventHandler
 	// something that needs catching on the tic it happens.
 	const WATCH_TICS = 35;
 
-	const PRESET_COUNT = 28;
+	const PRESET_COUNT = 34;
 
 	// Stored in the per-sector colour tables for a lane that draws nothing
 	// there. Pack() never produces a negative, so this cannot collide with a

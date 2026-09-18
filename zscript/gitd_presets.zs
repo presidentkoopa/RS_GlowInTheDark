@@ -184,6 +184,12 @@ class GITD_Presets
 		case 25: Moss(surfaceOnly);            break;
 		case 26: BadBallast(surfaceOnly);      break;
 		case 27: Sump(surfaceOnly);            break;
+		case 28: Vaporwave(surfaceOnly);       break;
+		case 29: Strobe(surfaceOnly);          break;
+		case 30: Chromawave(surfaceOnly);      break;
+		case 31: Overdrive(surfaceOnly);       break;
+		case 32: Veins(surfaceOnly);           break;
+		case 33: LostSignal(surfaceOnly);      break;
 		default: VanillaPlus(surfaceOnly);     break;
 		}
 	}
@@ -627,5 +633,127 @@ class GITD_Presets
 		Lane("gitd_cg", false, 0, 0, 0, 0, 0, 0, 0.00);
 		Liquid(true, 0, 120, 255, 90, 255, 2, 2.20, false);
 		Throb(0.20, 0.35, 0.45);
+	}
+
+	// ---- 28-33: the loud end (owner, 2026-09-18: "more neon, more crazy") ---
+	//
+	// Same rule as the rest -- a different mechanism each -- but tuned past
+	// restraint on purpose. These are the ones to look at with Bloom's Neon or
+	// Emissive preset on; several of them are built to blow out.
+	//
+	// NAMES: nothing here is called Static. `Static()` collides with ZScript's
+	// static keyword the way `Void()` collides with the void type, and both die
+	// at LOAD, not at compile.
+
+	// 28 -- signature: the far ramp crossing the colour wheel. Hellscape ramps
+	// crimson to a darker crimson; this ramps hot magenta at the seam to cyan at
+	// the far edge, so every surface carries both ends of the spectrum and the
+	// middle of a wall is the colour in between. Flow at wide spacing lays a
+	// slow grid over it. Sunset on a chrome arcade cabinet.
+	static void Vaporwave(bool surfaceOnly)
+	{
+		Flow(0.55, 40.0, 0.30, 2.2);
+		Tex(0.20, 0.050, 0.02, 1.5);
+		if (surfaceOnly) return;
+		Window(300, 330, 0.85, 1.00, 0.70, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  95, 1, 1.60, 2,  40, 220, 255);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  85, 1, 1.40, 2,  40, 220, 255);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 170, 1, 1.70, 2,  30, 200, 255);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 130, 1, 1.40, 2,  60, 120, 255);
+		Liquid(true, 0, 255, 60, 200, 210, 1, 1.80, true);
+	}
+
+	// 29 -- signature: the throb at its maximum rate AND full depth, with a
+	// colour rolled per sector. Bad Ballast flickers shallow and cold in one
+	// colour; this is every room strobing at its own colour, hard enough to read
+	// through closed eyes. The loudest preset in the mod, and the one to turn
+	// off before a long session.
+	static void Strobe(bool surfaceOnly)
+	{
+		Tex(0.15, 0.065, 0.0, 1.8);
+		if (surfaceOnly) return;
+		Window(0, 360, 0.90, 1.00, 0.85, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  90, 3, 1.80);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  90, 3, 1.80);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 140, 3, 2.00);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 110, 3, 1.70);
+		Throb(1.00, 1.00, 4.00);
+		Liquid(true, 0, 255, 255, 255, 200, 3, 2.40, true);
+	}
+
+	// 30 -- signature: a wave that carries the WHOLE hue circle as it travels.
+	// Hue Drift slides colour with nothing moving; Prism is a static pastel
+	// spread; this is a rainbow front crossing floor, wall and ceiling as one
+	// sphere, bright and saturated, with the brightness riding along. Fast
+	// enough that a room is never one colour for long.
+	static void Chromawave(bool surfaceOnly)
+	{
+		Cells(0.25, 40.0, 0.20, 0.50);
+		if (surfaceOnly) return;
+		Window(0, 360, 0.85, 1.00, 0.80, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0, 100, 1, 1.50);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  95, 1, 1.40);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 180, 1, 1.70);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 140, 1, 1.40);
+		Wave(240, 1.60, 1.4, 4, 0.75, 0.85, 1.00, 0.25, 7.0);
+		Phase(0.0, 0.3, 0.6, 0.9);
+		Liquid(true, 0, 255, 120, 255, 220, 1, 2.00, true);
+	}
+
+	// 31 -- signature: everything at once, at the top of every scale. Intensity
+	// near the maximum on all four lanes over a long reach, the grain contrast
+	// at the top of its range, and white-hot far colours -- built to blow past
+	// 1.0 everywhere so the bloom pass has something to chew. Neon draws hard
+	// edges; this is the opposite, a room with no dark left in it.
+	static void Overdrive(bool surfaceOnly)
+	{
+		Tex(0.60, 0.040, 0.10, 4.00);
+		if (surfaceOnly) return;
+		Window(160, 320, 0.80, 1.00, 0.90, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0, 200, 0, 2.80, 2, 255, 255, 255);
+		Lane("gitd_wc", true, 1, 0, 0, 0, 200, 0, 2.60, 2, 255, 255, 255);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 360, 0, 3.00, 2, 255, 255, 255);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 280, 0, 2.60, 2, 255, 255, 255);
+		Liquid(true, 0, 255, 255, 255, 300, 0, 3.00, true);
+	}
+
+	// 32 -- signature: flow fast and tight enough to read as MOVEMENT along the
+	// seams, ramped from white-hot at the seam to dead oxblood at the edge, and
+	// keyed forward so the rooms the mapper lit brightest run hottest. Circuitry
+	// is the same mechanism cold, sharp and still; this is the same traces
+	// running molten and dripping.
+	static void Veins(bool surfaceOnly)
+	{
+		Flow(0.90, 16.0, 2.40, 4.0);
+		Cells(0.30, 18.0, 0.30, 0.35);
+		Tex(0.45, 0.050, 0.25, 2.2);
+		if (surfaceOnly) return;
+		Window(0, 25, 0.85, 1.00, 0.55, 1.00);
+		LightDir(false);
+		Lane("gitd_wf", true, 3, 0, 0, 0,  70, 1, 1.90, 2, 60,  6,  4);
+		Lane("gitd_wc", true, 3, 0, 0, 0,  60, 1, 1.60, 2, 46,  5,  4);
+		Lane("gitd_fg", true, 3, 0, 0, 0, 150, 1, 2.20, 2, 70,  8,  5);
+		Lane("gitd_cg", true, 3, 0, 0, 0, 110, 1, 1.70, 2, 40,  4,  3);
+		Throb(0.30, 0.55, 1.40);
+		Liquid(true, 0, 255, 140, 30, 230, 1, 2.30, true);
+	}
+
+	// 33 -- signature: a hard-banded wave detuned to its maximum with a seed, so
+	// the bands never line up and the phase falls apart plane by plane. Signal
+	// is the clean version of this mechanism -- one band sweeping in order; this
+	// is the same thing broken, in acid green against magenta, jittering like a
+	// dead channel. The sharpest wave in the set.
+	static void LostSignal(bool surfaceOnly)
+	{
+		Tex(0.85, 0.095, 0.40, 3.4);
+		if (surfaceOnly) return;
+		Window(95, 320, 0.80, 1.00, 0.65, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  60, 3, 1.70);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  60, 3, 1.70);
+		Lane("gitd_fg", true, 1, 0, 0, 0,  90, 3, 1.60);
+		Lane("gitd_cg", true, 1, 0, 0, 0,  75, 3, 1.50);
+		Wave(140, 2.80, 8.0, 2, 0.85, 1.00, 0.80, 1.00, 33.0);
+		Phase(0.0, 0.5, 0.75, 0.25);
+		Liquid(true, 0, 120, 255, 60, 170, 3, 2.00, true);
 	}
 }

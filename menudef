@@ -69,6 +69,12 @@ OptionValue "GITD_Preset"
 	25, "Moss"
 	26, "Bad Ballast"
 	27, "Sump"
+	28, "Vaporwave"
+	29, "Strobe (loud)"
+	30, "Chromawave"
+	31, "Overdrive (loud)"
+	32, "Veins"
+	33, "Lost Signal"
 }
 
 OptionValue "GITD_OnDeath"
