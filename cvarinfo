@@ -38,6 +38,26 @@ server int   gitd_ondeath      = 0;       // 0 off, 1 new colours, 2 new preset
 // Sector.SetGlowColorFar in wadsrc/static/zscript/mapdata.zs. On by default;
 // an explicitly picked far colour on a lane still overrides it.
 server bool  gitd_seamless     = true;
+// Seamless corners WHILE A WAVE RUNS (owner 2026-09-18: the wall and ceiling
+// join is not seamless). Seamless corners switch themselves off whenever a
+// glow wave is live, because a wave moves each surface's reach independently
+// and the join it had just closed reopens -- and eight of the presets run
+// waves, so the owner meets the seam on most of them.
+//
+// On, the corner colour agreement is kept under a wave AND the flat lane takes
+// its wall neighbour's phase (the ceiling face takes the wall-from-ceiling
+// phase, the floor face takes the wall-from-floor one), so the two sides of a
+// join beat together instead of half a cycle apart.
+//
+// Off by default because it overrides a preset's own phase offsets: Reactor
+// and Signal set the floor and ceiling deliberately out of step so the light
+// CLIMBS the room, and that effect goes while this is on.
+//
+// It cannot close the join completely on its own: the engine seeds the wave
+// and the glow grain from the plane's height on a wall and from the sector's
+// first linedef on a flat, so the two sides still differ by the seed. That
+// part is an engine change, asked for on 2026-09-18.
+server bool  gitd_seamless_wave = false;
 // Seamless corners, shape too. Off by default: the floor and ceiling faces
 // take the wall lane's reach, falloff and intensity at a corner as well as its
 // colour, so the two ramps match in width and curve. On, the Floor Face and

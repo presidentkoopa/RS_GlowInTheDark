@@ -446,7 +446,7 @@ class GITD_Handler : EventHandler
 	// picture while the menu is open. Declared for menu_lint's live-page check:
 	// LINT-UI-LIVE: gitd_speed gitd_pulse_rate gitd_wave_len gitd_wave_speed gitd_wave_sharp
 	// LINT-UI-LIVE: gitd_wave_reach gitd_wave_bright gitd_wave_colour gitd_wave_detune gitd_wave_seed
-	// LINT-UI-LIVE: gitd_wave_ph_wtop gitd_wave_ph_wbot gitd_wave_ph_floor gitd_wave_ph_ceil
+	// LINT-UI-LIVE: gitd_wave_ph_wtop gitd_wave_ph_wbot gitd_wave_ph_floor gitd_wave_ph_ceil gitd_seamless_wave
 	// LINT-UI-LIVE: gitd_tex_noise gitd_tex_scale gitd_tex_drift gitd_tex_contrast
 	// LINT-UI-LIVE: gitd_flow gitd_flow_spacing gitd_flow_speed gitd_flow_sharp
 	// LINT-UI-LIVE: gitd_cell gitd_cell_scale gitd_cell_speed gitd_cell_width gitd_pulse gitd_pulse_level gitd_react
@@ -473,11 +473,22 @@ class GITD_Handler : EventHandler
 			GITD_Util.GetF("gitd_wave_detune"),
 			GITD_Util.GetF("gitd_wave_seed"));
 
-		Level.SetGlowWavePhase(
-			GITD_Util.GetF("gitd_wave_ph_wtop"),
-			GITD_Util.GetF("gitd_wave_ph_wbot"),
-			GITD_Util.GetF("gitd_wave_ph_floor"),
-			GITD_Util.GetF("gitd_wave_ph_ceil"));
+		// With seamless corners held through a wave, a flat beats with the wall
+		// it meets rather than on its own phase: the ceiling face takes the
+		// wall-from-ceiling phase and the floor face the wall-from-floor one.
+		// The cvars are left alone -- this is what gets PUSHED, so switching it
+		// off hands every preset's own offsets straight back.
+		double phWTop = GITD_Util.GetF("gitd_wave_ph_wtop");
+		double phWBot = GITD_Util.GetF("gitd_wave_ph_wbot");
+		double phFloor = GITD_Util.GetF("gitd_wave_ph_floor");
+		double phCeil = GITD_Util.GetF("gitd_wave_ph_ceil");
+		if (GITD_Util.GetB("gitd_seamless", true)
+			&& GITD_Util.GetB("gitd_seamless_wave", false))
+		{
+			phFloor = phWBot;
+			phCeil = phWTop;
+		}
+		Level.SetGlowWavePhase(phWTop, phWBot, phFloor, phCeil);
 
 		Level.SetGlowTexture(
 			GITD_Util.GetF("gitd_tex_noise"),
@@ -738,8 +749,18 @@ class GITD_Handler : EventHandler
 		// room is bounded by continuous colour with no edge, or the edge moves;
 		// it cannot be both. Eight of the presets run waves, so silently
 		// dropping seamless while one is live is the only safe reading.
+		//
+		// gitd_seamless_wave (owner, 2026-09-18) keeps the agreement while a
+		// wave runs. The reasoning above still holds for the EDGE -- a wave
+		// moves it and the two sides' edges will not sit in the same place --
+		// but the junction itself is at distance 0 on both surfaces, so the
+		// colour there is the near colour whatever the wave does to reach.
+		// Agreeing on it removes the hue step at the corner, which is the part
+		// that reads as a seam; PushGlobals then hands the flat its wall
+		// neighbour's phase so the two do not beat half a cycle apart.
 		seamless = GITD_Util.GetB("gitd_seamless", true)
-			&& GITD_Util.GetF("gitd_wave_len") <= 0.0;
+			&& (GITD_Util.GetF("gitd_wave_len") <= 0.0
+				|| GITD_Util.GetB("gitd_seamless_wave", false));
 		seamShape = GITD_Util.GetB("gitd_seamless_shape", false);
 
 		wallSeam  = GITD_Util.GetB("gitd_seamless_walls", true);
@@ -1215,6 +1236,7 @@ class GITD_Handler : EventHandler
 		h = Acc(h, GITD_Util.GetB("gitd_liq_on", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_liq_walls", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless", true) ? 1 : 0);
+		h = Acc(h, GITD_Util.GetB("gitd_seamless_wave", false) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless_shape", false) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless_walls", true) ? 1 : 0);
 		h = Acc(h, int(GITD_Util.GetF("gitd_wall_blend", 0.5) * 1000.0));
