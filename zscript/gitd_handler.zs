@@ -150,6 +150,30 @@ class GITD_Handler : EventHandler
 	private ui transient bool seamless;
 	private ui transient bool seamShape;
 
+	// EMERGENCY LIGHTING -- a room that has lost its lamps.
+	//
+	// RS_Ballistics' shot-out lights lowers a room's light level as its light
+	// fixtures are destroyed. This is the answer to that: once most of a room's
+	// lamps are dead, its lanes go to an emergency colour at a raised intensity,
+	// so the room reads as lit by something that is not the ceiling any more
+	// rather than just going dim.
+	//
+	// WHY A PLAY CACHE AND A UI EPOCH. The share of a room's fixtures that are
+	// dead is playsim state, and it is read through a Service whose accessor is
+	// play. The apply pass is ui. A ui function may READ play data but may not
+	// call a play function, so WorldTick fills the cache and bumps the epoch,
+	// and the ui watch notices the epoch move and repaints. Nothing is written
+	// the other way.
+	//
+	// Inert with no RS_Ballistics: the Service is not found, the cache stays
+	// empty, and every sector reads 0.
+	private Array<double> deadShare;
+	private int emergencyEpoch;
+	private int emergencyTimer;
+	private Service fixtureSvc;
+	private bool fixtureSvcLooked;
+	private ui transient int seenEmergencyEpoch;
+
 	// SEAMLESS WALLS.
 	//
 	// Corners fix the join inside one sector. This fixes the join BETWEEN
@@ -275,6 +299,62 @@ class GITD_Handler : EventHandler
 		if (!haveCentre) FindMapCentre();
 		PushWaveOrigin();
 		SyncPreset();
+		PollFixtures();
+	}
+
+	// The dead-fixture poll, play side. Once a second, and the first question
+	// is always "has anything on this map been shot at all" -- on a map where
+	// nobody has broken a lamp, which is most of them, that is one Service call
+	// a second and nothing else.
+	void PollFixtures()
+	{
+		if (--emergencyTimer > 0) return;
+		emergencyTimer = WATCH_TICS;
+
+		if (!GITD_Util.GetB("gitd_emergency", true))
+		{
+			if (deadShare.Size() > 0) { deadShare.Clear(); emergencyEpoch++; }
+			return;
+		}
+
+		if (!fixtureSvcLooked)
+		{
+			fixtureSvcLooked = true;
+			let it = ServiceIterator.Find("RSB_FixtureService");
+			fixtureSvc = it.Next();
+		}
+		if (!fixtureSvc || !Level) return;
+
+		if (fixtureSvc.GetDouble("anydead") <= 0.0)
+		{
+			if (deadShare.Size() > 0) { deadShare.Clear(); emergencyEpoch++; }
+			return;
+		}
+
+		int n = Level.Sectors.Size();
+		bool moved = deadShare.Size() != n;
+		if (moved) deadShare.Resize(n);
+		for (int i = 0; i < n; i++)
+		{
+			double d = clamp(fixtureSvc.GetDouble("deadshare", "", i), 0.0, 1.0);
+			// A repaint is a whole-map pass, so it is worth a threshold: a share
+			// creeping by a hundredth is not worth one.
+			if (abs(d - deadShare[i]) > 0.01) moved = true;
+			deadShare[i] = d;
+		}
+		if (moved) emergencyEpoch++;
+	}
+
+	// How far past the threshold this room is, 0..1. Read from ui.
+	ui double EmergencyAt(int idx) const
+	{
+		if (idx < 0 || idx >= deadShare.Size()) return 0.0;
+		double share = deadShare[idx];
+		double at = clamp(GITD_Util.GetF("gitd_emergency_share", 0.75), 0.05, 1.0);
+		if (share < at) return 0.0;
+		// At the threshold it arrives, at every fixture dead it is full.
+		return (share >= 1.0 || at >= 1.0) ? 1.0 : clamp((share - at) / (1.0 - at), 0.0, 1.0)
+			* 0.65 + 0.35;
 	}
 
 	// A preset to roll to: never Vanilla+, and never the one already showing.
@@ -619,6 +699,14 @@ class GITD_Handler : EventHandler
 
 		// Both looks run every time. Neither may short-circuit the other: each
 		// also brings its own record up to date.
+		// The play side polls RS_Ballistics; a move in what it found repaints,
+		// the same as a door changing a sector would.
+		if (seenEmergencyEpoch != emergencyEpoch)
+		{
+			seenEmergencyEpoch = emergencyEpoch;
+			BeginApply();
+		}
+
 		if (!applying && --watchTimer <= 0)
 		{
 			watchTimer = WATCH_TICS;
@@ -722,6 +810,9 @@ class GITD_Handler : EventHandler
 	// LINT-UI-LIVE: gitd_wc_color gitd_wc_reach gitd_wc_intensity gitd_wc_farcolor
 	// LINT-UI-LIVE: gitd_fg_color gitd_fg_reach gitd_fg_intensity gitd_fg_farcolor
 	// LINT-UI-LIVE: gitd_cg_color gitd_cg_reach gitd_cg_intensity gitd_cg_farcolor
+	// The emergency values ride the same apply: they are in SettingsHash, so
+	// moving one repaints within a fifth of a second with the menu open.
+	// LINT-UI-LIVE: gitd_emergency_share gitd_emergency_gain gitd_emergency_color
 	// LINT-UI-LIVE: gitd_liq_color gitd_liq_reach gitd_liq_intensity gitd_liq_farcolor
 	// LINT-UI-LIVE: gitd_wall_blend gitd_hue_min gitd_hue_max gitd_sat_min gitd_sat_max gitd_val_min gitd_val_max gitd_seed
 	ui void BeginApply()
@@ -975,6 +1066,52 @@ class GITD_Handler : EventHandler
 				cWC = join;
 				cCG = join;
 				if (seamShape) { rCG = rWC; kCG = kWC; iCG = iWC; }
+			}
+		}
+
+		// EMERGENCY LIGHTING. This room has lost most of its light fixtures
+		// (RS_Ballistics' shot-out lights), so its lanes lean to the emergency
+		// colour and come up in intensity: the room reads as lit by something
+		// that is not the ceiling any more, instead of just going dim.
+		//
+		// ONLY LANES THAT ARE ALREADY DRAWN. A preset that paints nothing on the
+		// walls (Sump) keeps painting nothing here: switching lanes on would need
+		// reaches and falloffs this preset never chose, and inventing them would
+		// make a shot-out room look like a different preset rather than like the
+		// same room in trouble.
+		//
+		// A far colour that is OFF stays off, for the same reason: turning a ramp
+		// on where the preset wanted a flat wash is a look change, not a reaction.
+		double emer = EmergencyAt(idx);
+		if (emer > 0.0)
+		{
+			Color ec = GITD_Util.GetC("gitd_emergency_color");
+			Color ef = GITD_Util.AutoFar(ec);
+			double gain = 1.0 + (clamp(GITD_Util.GetF("gitd_emergency_gain", 1.35), 0.0, 3.0) - 1.0) * emer;
+
+			if (wfOn)
+			{
+				cWF = GITD_Util.LerpCol(cWF, ec, emer);
+				if (fWF.a > 0) fWF = GITD_Util.LerpCol(fWF, ef, emer);
+				iWF = clamp(iWF * gain, 0.0, 3.0);
+			}
+			if (wcOn)
+			{
+				cWC = GITD_Util.LerpCol(cWC, ec, emer);
+				if (fWC.a > 0) fWC = GITD_Util.LerpCol(fWC, ef, emer);
+				iWC = clamp(iWC * gain, 0.0, 3.0);
+			}
+			if (fgOn)
+			{
+				cFG = GITD_Util.LerpCol(cFG, ec, emer);
+				if (fFG.a > 0) fFG = GITD_Util.LerpCol(fFG, ef, emer);
+				iFG = clamp(iFG * gain, 0.0, 3.0);
+			}
+			if (cgOn)
+			{
+				cCG = GITD_Util.LerpCol(cCG, ec, emer);
+				if (fCG.a > 0) fCG = GITD_Util.LerpCol(fCG, ef, emer);
+				iCG = clamp(iCG * gain, 0.0, 3.0);
 			}
 		}
 
@@ -1237,6 +1374,10 @@ class GITD_Handler : EventHandler
 		h = Acc(h, GITD_Util.GetB("gitd_liq_walls", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless_wave", false) ? 1 : 0);
+		h = Acc(h, GITD_Util.GetB("gitd_emergency", true) ? 1 : 0);
+		h = Acc(h, int(GITD_Util.GetF("gitd_emergency_share", 0.75) * 1000.0));
+		h = Acc(h, int(GITD_Util.GetF("gitd_emergency_gain", 1.35) * 1000.0));
+		h = Acc(h, GITD_Util.GetC("gitd_emergency_color"));
 		h = Acc(h, GITD_Util.GetB("gitd_seamless_shape", false) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless_walls", true) ? 1 : 0);
 		h = Acc(h, int(GITD_Util.GetF("gitd_wall_blend", 0.5) * 1000.0));

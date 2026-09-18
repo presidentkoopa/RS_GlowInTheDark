@@ -58,6 +58,20 @@ server bool  gitd_seamless     = true;
 // first linedef on a flat, so the two sides still differ by the seed. That
 // part is an engine change, asked for on 2026-09-18.
 server bool  gitd_seamless_wave = false;
+
+// EMERGENCY LIGHTING, for RS_Ballistics' shot-out lights. Once this share of
+// a room's light fixtures is destroyed, that room's lanes lean to the
+// emergency colour and come up in intensity.
+//
+// On by default, and inert without RS_Ballistics: nothing reports a dead
+// fixture, so no room ever reaches the threshold.
+//
+// 0.75 rather than 1.0 so one lamp left alive in an awkward corner does not
+// hold the whole room back from reacting.
+server bool  gitd_emergency       = true;
+server float gitd_emergency_share = 0.75;
+server float gitd_emergency_gain  = 1.35;
+server color gitd_emergency_color = "C81E14";
 // Seamless corners, shape too. Off by default: the floor and ceiling faces
 // take the wall lane's reach, falloff and intensity at a corner as well as its
 // colour, so the two ramps match in width and curve. On, the Floor Face and
