@@ -109,6 +109,16 @@ class GITD_Handler : EventHandler
 	// something that needs catching on the tic it happens.
 	const WATCH_TICS = 35;
 
+	// How often the burning rooms are polled. Their share falls over the
+	// player's linger (3.5 s by default), so three tics -- about twelve times a
+	// second -- follows it smoothly. It costs one question on a map where
+	// nothing is alight.
+	const FIRE_TICS = 3;
+
+	// A sanity bound on what the other mod reports, so a bad answer cannot turn
+	// into an unbounded loop here.
+	const FIRE_MAX = 256;
+
 	const PRESET_COUNT = 34;
 
 	// Stored in the per-sector colour tables for a lane that draws nothing
@@ -173,6 +183,27 @@ class GITD_Handler : EventHandler
 	private Service fixtureSvc;
 	private bool fixtureSvcLooked;
 	private ui transient int seenEmergencyEpoch;
+
+	// FIRE LIGHT -- a room that is BURNING, the inverse of the one above.
+	//
+	// RS_Ballistics' flamethrower lights a room with two point lights while you
+	// pour, and burning floor holds no light of its own, so a corridor goes dark
+	// behind you with fire still on it. This lifts the room's own glow while it
+	// burns and lets it fall as the fire dies.
+	//
+	// PRESENTATION ONLY, and the symmetry with the lamps is the trap: their fire
+	// emitters are client-side, so a burning room is this machine's own look. No
+	// sector light is written by either side, and nothing the game reads changes.
+	//
+	// A FALLING VALUE NEEDS A FAST POLL AND A CHEAP ONE. Their share decays on
+	// its own over the player's linger, so a once-a-second poll would step it
+	// down in one-second jumps. The list of burning sectors is enumerated from
+	// them instead -- a handful of entries -- and polled several times a second,
+	// and only those sectors are repainted rather than the whole map.
+	private Array<int> fireSectors;
+	private Array<double> fireShare;
+	private int fireTimer;
+	private ui transient Array<int> firePainted;
 
 	// SEAMLESS WALLS.
 	//
@@ -300,6 +331,7 @@ class GITD_Handler : EventHandler
 		PushWaveOrigin();
 		SyncPreset();
 		PollFixtures();
+		PollFire();
 	}
 
 	// The dead-fixture poll, play side. Once a second, and the first question
@@ -359,6 +391,53 @@ class GITD_Handler : EventHandler
 			deadShare[i] = d;
 		}
 		if (moved) emergencyEpoch++;
+	}
+
+	// The burning-room poll. Faster than the lamp poll because the value falls
+	// continuously, and cheap because it never walks the map: one question to
+	// ask whether anything is alight at all, then the burning sectors only.
+	void PollFire()
+	{
+		if (--fireTimer > 0) return;
+		fireTimer = FIRE_TICS;
+
+		if (!GITD_Util.GetB("gitd_firelight", true) || !fixtureSvc || !Level)
+		{
+			fireSectors.Clear();
+			fireShare.Clear();
+			return;
+		}
+
+		if (fixtureSvc.GetDouble("anyfire") <= 0.0)
+		{
+			fireSectors.Clear();
+			fireShare.Clear();
+			return;
+		}
+
+		int n = int(fixtureSvc.GetDouble("firecount"));
+		if (n > FIRE_MAX) n = FIRE_MAX;
+		fireSectors.Clear();
+		fireShare.Clear();
+		int secs = Level.Sectors.Size();
+		for (int i = 0; i < n; i++)
+		{
+			int idx = int(fixtureSvc.GetDouble("firesector", "", i));
+			if (idx < 0 || idx >= secs) continue;
+			double share = clamp(fixtureSvc.GetDouble("fireshare", "", idx), 0.0, 1.0);
+			if (share <= 0.0) continue;
+			fireSectors.Push(idx);
+			fireShare.Push(share);
+		}
+	}
+
+	// How brightly this room is burning, 0..1. Read from ui. The list is the
+	// burning sectors only, so this is a walk of a handful of entries.
+	ui double FireAt(int idx) const
+	{
+		for (int i = 0; i < fireSectors.Size(); i++)
+			if (fireSectors[i] == idx) return fireShare[i];
+		return 0.0;
 	}
 
 	// How far past the threshold this room is, 0..1. Read from ui.
@@ -723,6 +802,13 @@ class GITD_Handler : EventHandler
 			BeginApply();
 		}
 
+		// THE BURNING ROOMS, EVERY TIC AND ONLY THEM. A room's fire share falls
+		// continuously, so this cannot wait for the once-a-second watch, and it
+		// must not repaint the map either: it re-applies the handful of sectors
+		// that are alight, plus the ones that were alight last tic and are not
+		// any more, which is what puts a room back to its own colours.
+		RepaintFire();
+
 		if (!applying && --watchTimer <= 0)
 		{
 			watchTimer = WATCH_TICS;
@@ -829,8 +915,45 @@ class GITD_Handler : EventHandler
 	// The emergency values ride the same apply: they are in SettingsHash, so
 	// moving one repaints within a fifth of a second with the menu open.
 	// LINT-UI-LIVE: gitd_emergency_share gitd_emergency_gain gitd_emergency_color
+	// LINT-UI-LIVE: gitd_firelight_mix gitd_firelight_gain gitd_firelight_color
 	// LINT-UI-LIVE: gitd_liq_color gitd_liq_reach gitd_liq_intensity gitd_liq_farcolor
 	// LINT-UI-LIVE: gitd_wall_blend gitd_hue_min gitd_hue_max gitd_sat_min gitd_sat_max gitd_val_min gitd_val_max gitd_seed
+	// Re-applies the burning sectors and the ones that have just stopped
+	// burning. Nothing happens on a map where nothing is alight: both lists are
+	// empty and this is two size checks.
+	//
+	// Held off while a full apply is mid-flight (its resolve pass is still
+	// filling the tables these reads come from) and until the tables are sized
+	// for this map.
+	ui void RepaintFire()
+	{
+		if (fireSectors.Size() == 0 && firePainted.Size() == 0) return;
+		if (applying || !Level) return;
+		int n = Level.Sectors.Size();
+		if (baseWF.Size() != n) return;
+
+		for (int i = 0; i < fireSectors.Size(); i++)
+		{
+			int idx = fireSectors[i];
+			if (idx >= 0 && idx < n) ApplySector(Level.Sectors[idx], idx);
+		}
+
+		// Out, not merely dimmer: a room that has left the list gets one last
+		// apply, with FireAt now 0, which is what restores its own colours.
+		for (int i = 0; i < firePainted.Size(); i++)
+		{
+			int idx = firePainted[i];
+			if (idx < 0 || idx >= n) continue;
+			bool still = false;
+			for (int j = 0; j < fireSectors.Size(); j++)
+				if (fireSectors[j] == idx) { still = true; break; }
+			if (!still) ApplySector(Level.Sectors[idx], idx);
+		}
+
+		firePainted.Clear();
+		for (int i = 0; i < fireSectors.Size(); i++) firePainted.Push(fireSectors[i]);
+	}
+
 	ui void BeginApply()
 	{
 		// Nothing to apply into yet. UiTick fires before a level has ever
@@ -1131,6 +1254,26 @@ class GITD_Handler : EventHandler
 			}
 		}
 
+		// FIRE LIGHT. The room is burning: its lanes lean warm and come up, and
+		// fall back as the fire dies. The FALL IS THEIRS, not mine -- their share
+		// decays over the player's own linger setting, and a fade of my own here
+		// would fight it and land somewhere neither of us chose.
+		//
+		// After the emergency lean, so a burning room that has also lost its lamps
+		// reads as on fire rather than as merely broken.
+		double fire = FireAt(idx);
+		if (fire > 0.0)
+		{
+			Color fc = GITD_Util.GetC("gitd_firelight_color");
+			double mix = clamp(GITD_Util.GetF("gitd_firelight_mix", 0.7), 0.0, 1.0) * fire;
+			double fgain = 1.0 + (clamp(GITD_Util.GetF("gitd_firelight_gain", 1.8), 0.0, 3.0) - 1.0) * fire;
+
+			if (wfOn) { cWF = GITD_Util.LerpCol(cWF, fc, mix); iWF = clamp(iWF * fgain, 0.0, 3.0); }
+			if (wcOn) { cWC = GITD_Util.LerpCol(cWC, fc, mix); iWC = clamp(iWC * fgain, 0.0, 3.0); }
+			if (fgOn) { cFG = GITD_Util.LerpCol(cFG, fc, mix); iFG = clamp(iFG * fgain, 0.0, 3.0); }
+			if (cgOn) { cCG = GITD_Util.LerpCol(cCG, fc, mix); iCG = clamp(iCG * fgain, 0.0, 3.0); }
+		}
+
 		if (!(claimed & CLAIM_WALLS))
 		{
 			ApplyWallLane(sec, Sector.floor,   wfOn, cWF, fWF, rWF, kWF, iWF);
@@ -1394,6 +1537,10 @@ class GITD_Handler : EventHandler
 		h = Acc(h, int(GITD_Util.GetF("gitd_emergency_share", 0.75) * 1000.0));
 		h = Acc(h, int(GITD_Util.GetF("gitd_emergency_gain", 1.35) * 1000.0));
 		h = Acc(h, GITD_Util.GetC("gitd_emergency_color"));
+		h = Acc(h, GITD_Util.GetB("gitd_firelight", true) ? 1 : 0);
+		h = Acc(h, int(GITD_Util.GetF("gitd_firelight_mix", 0.7) * 1000.0));
+		h = Acc(h, int(GITD_Util.GetF("gitd_firelight_gain", 1.8) * 1000.0));
+		h = Acc(h, GITD_Util.GetC("gitd_firelight_color"));
 		h = Acc(h, GITD_Util.GetB("gitd_seamless_shape", false) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless_walls", true) ? 1 : 0);
 		h = Acc(h, int(GITD_Util.GetF("gitd_wall_blend", 0.5) * 1000.0));

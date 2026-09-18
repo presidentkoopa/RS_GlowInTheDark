@@ -164,6 +164,15 @@ OptionMenu "GITDMain"
 	StaticText "its shot-out lights; without them no room ever", "gray"
 	StaticText "loses a fixture and this does nothing.", "gray"
 	StaticText "Lanes a preset switched off stay off.", "gray"
+	StaticText ""
+	Option "Fire lights the room", "gitd_firelight", "OnOff"
+	Slider "  How much colour", "gitd_firelight_mix", 0.0, 1.0, 0.05, 2
+	Slider "  Brightness", "gitd_firelight_gain", 0.5, 3.0, 0.05, 2
+	ColorPicker "  Colour", "gitd_firelight_color"
+	StaticText "A room that is burning glows warmer and", "gray"
+	StaticText "brighter while it burns, and falls back as the", "gray"
+	StaticText "fire dies. Needs RS_Ballistics' flamethrower;", "gray"
+	StaticText "how long it takes to fade is its own setting.", "gray"
 
 	StaticText ""
 	Option "Preset", "gitd_preset", "GITD_Preset"

@@ -72,6 +72,21 @@ server bool  gitd_emergency       = true;
 server float gitd_emergency_share = 0.75;
 server float gitd_emergency_gain  = 1.35;
 server color gitd_emergency_color = "C81E14";
+
+// FIRE LIGHT, for RS_Ballistics' flamethrower. A room that is burning lifts
+// its own glow warm and bright, and falls back as the fire dies -- their
+// flamethrower lights a room while you pour, but burning floor holds no light
+// of its own, so a corridor used to go dark behind you with fire still on it.
+//
+// The FALL is theirs (rsb_firelight_linger): this follows their share rather
+// than running a fade of its own.
+//
+// Inert without RS_Ballistics, and presentation only -- no sector light is
+// written by either side, and their fire is client-side anyway.
+server bool  gitd_firelight       = true;
+server float gitd_firelight_mix   = 0.7;
+server float gitd_firelight_gain  = 1.8;
+server color gitd_firelight_color = "FF7A1E";
 // Seamless corners, shape too. Off by default: the floor and ceiling faces
 // take the wall lane's reach, falloff and intensity at a corner as well as its
 // colour, so the two ramps match in width and curve. On, the Floor Face and
