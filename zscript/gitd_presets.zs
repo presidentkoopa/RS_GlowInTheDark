@@ -179,6 +179,11 @@ class GITD_Presets
 		case 20: Trawler(surfaceOnly);         break;
 		case 21: Filament(surfaceOnly);        break;
 		case 22: Tide(surfaceOnly);            break;
+		case 23: Crosswind(surfaceOnly);       break;
+		case 24: HueDrift(surfaceOnly);        break;
+		case 25: Moss(surfaceOnly);            break;
+		case 26: BadBallast(surfaceOnly);      break;
+		case 27: Sump(surfaceOnly);            break;
 		default: VanillaPlus(surfaceOnly);     break;
 		}
 	}
@@ -525,5 +530,102 @@ class GITD_Presets
 		Wave(520, 0.18, 1.2, 4, 0.0, 0.85, 0.65, 0.55, 1.0);
 		Phase(0.0, 0.15, 0.30, 0.45);
 		Liquid(true, 0, 70, 210, 200, 220, 2, 1.20, true);
+	}
+
+	// ---- 23-27: five more, each on a lever the first twenty-three left alone -
+
+	// 23 -- signature: wave shape 3, the only preset that uses it. The crest is
+	// a vertical plane travelling along the map's OTHER ground axis, so the
+	// front crosses a level sideways rather than spreading from a point (1) or
+	// rising through it (5). In a long east-west map it arrives down the length
+	// of the place; the same map under Pulse would light from the middle out.
+	// Flow is set across it so the surface grain runs with the front.
+	static void Crosswind(bool surfaceOnly)
+	{
+		Flow(0.35, 30.0, 0.55, 1.2);
+		Tex(0.20, 0.050, 0.06, 1.3);
+		if (surfaceOnly) return;
+		Window(150, 215, 0.45, 0.80, 0.50, 0.95);
+		Lane("gitd_wf", true, 2, 0, 0, 0,  80, 1, 1.00);
+		Lane("gitd_wc", true, 2, 0, 0, 0,  70, 1, 0.85);
+		Lane("gitd_fg", true, 2, 0, 0, 0, 150, 1, 1.10);
+		Lane("gitd_cg", true, 2, 0, 0, 0, 110, 1, 0.80);
+		Wave(260, 0.70, 1.1, 3, 0.45, 0.65, 0.25);
+		Phase(0.0, 0.25, 0.0, 0.25);
+		Liquid(true, 0, 80, 200, 220, 190, 2, 1.20, true);
+	}
+
+	// 24 -- signature: a wave that carries NO brightness at all. Reach and
+	// bright are both zero and colour is full, so nothing gets lighter or darker
+	// and nothing moves -- the hue slides through the whole circle instead, and
+	// a wall you are staring at changes colour under you. Tide moves brightness
+	// and colour together; this is the colour half on its own. Detuned and
+	// seeded so rooms drift out of step with each other.
+	static void HueDrift(bool surfaceOnly)
+	{
+		Tex(0.25, 0.060, 0.02, 1.2);
+		if (surfaceOnly) return;
+		Window(0, 360, 0.45, 0.85, 0.55, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  90, 1, 0.95);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  80, 1, 0.80);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 160, 1, 1.05);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 120, 1, 0.80);
+		Wave(340, 0.30, 0.8, 1, 0.0, 0.0, 1.00, 0.35, 5.0);
+		Liquid(true, 0, 120, 220, 160, 190, 2, 1.20, true);
+	}
+
+	// 25 -- signature: cells at triple the largest scale in the set and nearly
+	// stopped. Spore's grain is small, dense and low; this is the same mechanism
+	// at map scale, so instead of speckle you get slow continents of glow that
+	// drift across a floor and take a corridor's length to cross. Flat lanes
+	// carry it, with a long reach so it soaks rather than outlines.
+	static void Moss(bool surfaceOnly)
+	{
+		Cells(0.80, 72.0, 0.03, 0.40);
+		Tex(0.30, 0.035, 0.01, 1.1);
+		if (surfaceOnly) return;
+		Window(80, 140, 0.40, 0.70, 0.30, 0.70);
+		Lane("gitd_wf", true, 2, 0, 0, 0,  55, 2, 0.45);
+		Lane("gitd_wc", false, 2, 0, 0, 0,  0, 0, 0.00);
+		Lane("gitd_fg", true, 2, 0, 0, 0, 240, 2, 1.00);
+		Lane("gitd_cg", true, 2, 0, 0, 0, 120, 2, 0.55);
+		Liquid(true, 0, 110, 200, 120, 190, 2, 1.00, true);
+	}
+
+	// 26 -- signature: the throb rate above 1, which nothing else does. Every
+	// other throbbing preset beats slower than the level's own rate; this beats
+	// well over twice it at a shallow depth, so it reads as a bad fluorescent
+	// tube rather than as an alarm. Red Alert is deep, slow and red; this is
+	// shallow, fast and cold white, with the grain cranked so the flicker lands
+	// on detail rather than on flat colour.
+	static void BadBallast(bool surfaceOnly)
+	{
+		Tex(0.55, 0.090, 0.0, 2.2);
+		if (surfaceOnly) return;
+		Window(190, 230, 0.10, 0.30, 0.85, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  65, 3, 1.20);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  75, 3, 1.30);
+		Lane("gitd_fg", true, 1, 0, 0, 0,  90, 3, 1.00);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 100, 3, 1.20);
+		Throb(0.45, 0.35, 2.60);
+		Liquid(true, 0, 200, 220, 255, 150, 3, 1.30, true);
+	}
+
+	// 27 -- signature: the architecture does not glow AT ALL. All four lanes
+	// off, the liquid lane alone, and its spill onto the walls switched off, so
+	// the light stops at the edge of the nukage instead of climbing out of it.
+	// Hazard leaves the walls faintly lit and lets the liquid wash up them;
+	// here a pool is a hole of light in a black room, which is what makes the
+	// pit read as deep.
+	static void Sump(bool surfaceOnly)
+	{
+		Cells(0.35, 30.0, 0.05, 0.55);
+		if (surfaceOnly) return;
+		Lane("gitd_wf", false, 0, 0, 0, 0, 0, 0, 0.00);
+		Lane("gitd_wc", false, 0, 0, 0, 0, 0, 0, 0.00);
+		Lane("gitd_fg", false, 0, 0, 0, 0, 0, 0, 0.00);
+		Lane("gitd_cg", false, 0, 0, 0, 0, 0, 0, 0.00);
+		Liquid(true, 0, 120, 255, 90, 255, 2, 2.20, false);
+		Throb(0.20, 0.35, 0.45);
 	}
 }

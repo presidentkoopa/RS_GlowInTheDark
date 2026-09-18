@@ -64,6 +64,11 @@ OptionValue "GITD_Preset"
 	20, "Trawler"
 	21, "Filament"
 	22, "Tide"
+	23, "Crosswind"
+	24, "Hue Drift"
+	25, "Moss"
+	26, "Bad Ballast"
+	27, "Sump"
 }
 
 OptionValue "GITD_OnDeath"
@@ -150,7 +155,7 @@ OptionMenu "GITDMain"
 	StaticText "the preset chose, so a preset you like but find too", "gray"
 	StaticText "busy is one slider rather than four. 1.00 is the", "gray"
 	StaticText "preset as built.", "gray"
-	Slider "Throb speed", "gitd_pulse_rate", 0.0, 2.0, 0.05, 2
+	Slider "Throb speed", "gitd_pulse_rate", 0.0, 4.0, 0.05, 2
 	StaticText "How fast an alarming room beats, separately from", "gray"
 	StaticText "how hard. Bright and slow was not askable for", "gray"
 	StaticText "before -- the engine worked the speed out from the", "gray"
@@ -352,7 +357,7 @@ OptionMenu "GITDDetail"
 	StaticText ""
 	StaticText "Cells"
 	Slider "  Amount", "gitd_cell", 0, 1, 0.02, 2
-	Slider "  Cell size (map units)", "gitd_cell_scale", 0, 48, 0.5, 1
+	Slider "  Cell size (map units)", "gitd_cell_scale", 0, 128, 0.5, 1
 	Slider "  Speed", "gitd_cell_speed", 0, 2, 0.01, 2
 	Slider "  Width", "gitd_cell_width", 0, 1, 0.02, 2
 	StaticText ""
