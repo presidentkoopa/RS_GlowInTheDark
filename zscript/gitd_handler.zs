@@ -320,8 +320,24 @@ class GITD_Handler : EventHandler
 		if (!fixtureSvcLooked)
 		{
 			fixtureSvcLooked = true;
+			// EXACT CLASS NAME, NOT THE FIRST MATCH. ServiceIterator.Find
+			// matches on SUBSTRING -- its own documentation says "Services with
+			// names that match serviceName or have it as a part of their
+			// names". So a mod shipping RSB_FixtureServiceDebug would be handed
+			// to this Find and could arrive first, and every room's dead share
+			// would quietly come from the wrong mod. Nothing errors, and a wrong
+			// answer looks exactly like a right one. Anything but the exact
+			// class is treated as absent, which falls through to "no
+			// RS_Ballistics" -- the same path as not having it installed.
 			let it = ServiceIterator.Find("RSB_FixtureService");
-			fixtureSvc = it.Next();
+			for (Service cand = it.Next(); cand; cand = it.Next())
+			{
+				if (cand.GetClassName() == 'RSB_FixtureService')
+				{
+					fixtureSvc = cand;
+					break;
+				}
+			}
 		}
 		if (!fixtureSvc || !Level) return;
 
