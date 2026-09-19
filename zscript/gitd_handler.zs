@@ -184,6 +184,26 @@ class GITD_Handler : EventHandler
 	private bool fixtureSvcLooked;
 	private ui transient int seenEmergencyEpoch;
 
+	// ---- SURVIVING A SAVEGAME LOAD -----------------------------------------
+	//
+	// The engine SKIPS WorldLoaded for a non-static handler on a save restore
+	// (events.cpp: `if (!handler->IsStatic() && savegamerestore) continue;`),
+	// and this handler is not static. So a load arrives with the preset cvar
+	// restored from the save -- along with every slider tuned on top of it --
+	// while the applied latch, which is nosave, reads whatever was showing
+	// before the load. The tick then sees "wanted != applied", calls it a fresh
+	// pick, and stamps the whole preset over the tuning the save just restored.
+	//
+	// A handler FIELD is serialized with the save, so it comes back saying
+	// which preset the restored cvars already belong to. Stored PLUS ONE, so a
+	// save written before this field existed reads 0 and restores nothing.
+	//
+	// Ported from RS_Darkness, which had this first and is the reference shape.
+	// Two latches here: the preset and the chosen surface texture.
+	int savedLatch;
+	int savedTexLatch;
+	transient bool loadedLive;
+
 	// FIRE LIGHT -- a room that is BURNING, the inverse of the one above.
 	//
 	// RS_Ballistics' flamethrower lights a room with two point lights while you
@@ -294,11 +314,12 @@ class GITD_Handler : EventHandler
 		// before the load. Left alone, a save made on one preset and loaded
 		// while another was up read as a preset change, and SyncPreset re-ran
 		// the preset over the tuning the save had just restored.
-		if (e.IsSaveGame)
-		{
-			GITD_Util.SetI("gitd_preset_applied", GITD_Util.GetI("gitd_preset", 1));
-			GITD_Util.SetI("gitd_texture_applied", GITD_Util.GetI("gitd_texture", 0));
-		}
+		// This used to be guarded by `if (e.IsSaveGame)`, which can never be
+		// true: the engine skips a non-static handler's WorldLoaded entirely on
+		// a save restore, so the repair never ran and the bug it describes was
+		// live. The repair now happens in ResumeFromSave, off a serialized
+		// field, and reaching WorldLoaded at all means this is a live start.
+		loadedLive = true;
 
 		// Shuffle is for a NEW map. A loaded save or a hub return is the same
 		// map you left, and rolling there threw away the look the save kept.
@@ -316,6 +337,7 @@ class GITD_Handler : EventHandler
 				OtherPreset(GITD_Util.GetI("gitd_preset", 1), rOff, rAny));
 		}
 		SyncPreset();
+		SaveLatches();
 		PushGlobals();
 
 		// The map centre is known before the first UiTick on this map, so a
@@ -325,11 +347,17 @@ class GITD_Handler : EventHandler
 
 	override void WorldTick()
 	{
+		// Before the enabled test: a save loaded with the mod switched off
+		// would otherwise never repair the latch, and switching it back on
+		// would then read as a preset change and stamp over the save.
+		if (!loadedLive) ResumeFromSave();
+
 		if (!GITD_Util.GetB("gitd_enabled", true)) return;
 		PushGlobals();
 		if (!haveCentre) FindMapCentre();
 		PushWaveOrigin();
 		SyncPreset();
+		SaveLatches();
 		PollFixtures();
 		PollFire();
 	}
@@ -473,6 +501,24 @@ class GITD_Handler : EventHandler
 	// chose. A preset writes the texture cvars as part of its own look, so any
 	// preset change has to be followed by the texture override again or the
 	// chosen texture would silently revert on the next preset switch.
+	// Serialized with the save, so a restored handler knows which preset and
+	// texture the restored cvars already belong to. Plus one, so a save from
+	// before these fields existed reads 0 and restores nothing.
+	void SaveLatches()
+	{
+		savedLatch = GITD_Util.GetI("gitd_preset_applied", -1) + 1;
+		savedTexLatch = GITD_Util.GetI("gitd_texture_applied", -2) + 1;
+	}
+
+	// A handler restored from a save: match the latches to what the restored
+	// cvars already are, rather than applying anything over them.
+	void ResumeFromSave()
+	{
+		loadedLive = true;
+		if (savedLatch > 0) GITD_Util.SetI("gitd_preset_applied", savedLatch - 1);
+		if (savedTexLatch > 0) GITD_Util.SetI("gitd_texture_applied", savedTexLatch - 1);
+	}
+
 	clearscope static void SyncPreset()
 	{
 		int want    = GITD_Util.GetI("gitd_preset", 1);
@@ -749,7 +795,10 @@ class GITD_Handler : EventHandler
 		// a preset could not, because the CVars it sets were never written.
 		// Both sides calling it is harmless: the applied latches are nosave, so
 		// the first caller's write lands at once and the second sees no change.
-		SyncPreset();
+		//
+		// Not until WorldTick has repaired the latches after a save restore --
+		// a sync here first would see the mismatch and re-apply over the save.
+		if (loadedLive) SyncPreset();
 
 		// A fresh level starts with its glow unset, so a new map has to be
 		// re-applied even when not one setting moved and the hash therefore
