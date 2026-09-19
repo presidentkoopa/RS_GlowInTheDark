@@ -53,10 +53,10 @@ server bool  gitd_seamless     = true;
 // and Signal set the floor and ceiling deliberately out of step so the light
 // CLIMBS the room, and that effect goes while this is on.
 //
-// It cannot close the join completely on its own: the engine seeds the wave
-// and the glow grain from the plane's height on a wall and from the sector's
-// first linedef on a flat, so the two sides still differ by the seed. That
-// part is an engine change, asked for on 2026-09-18.
+// It closes the join completely as of engine 406a1ab05f (2026-09-18): all four
+// lanes now hash ONE per-sector number, so the wave's brightness and the glow
+// grain match across a corner instead of differing by the seed. Before that
+// this row could only remove the hue step.
 server bool  gitd_seamless_wave = false;
 
 // EMERGENCY LIGHTING, for RS_Ballistics' shot-out lights. Once this share of
