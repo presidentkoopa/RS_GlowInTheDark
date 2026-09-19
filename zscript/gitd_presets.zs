@@ -190,6 +190,15 @@ class GITD_Presets
 		case 31: Overdrive(surfaceOnly);       break;
 		case 32: Veins(surfaceOnly);           break;
 		case 33: LostSignal(surfaceOnly);      break;
+		case 34: Abyssal(surfaceOnly);         break;
+		case 35: Glacier(surfaceOnly);         break;
+		case 36: Klaxon(surfaceOnly);          break;
+		case 37: Inferno(surfaceOnly);         break;
+		case 38: Ultraviolet(surfaceOnly);     break;
+		case 39: Acid(surfaceOnly);            break;
+		case 40: Bubblegum(surfaceOnly);       break;
+		case 41: Voltage(surfaceOnly);         break;
+		case 42: Nave(surfaceOnly);            break;
 		default: VanillaPlus(surfaceOnly);     break;
 		}
 	}
@@ -755,5 +764,170 @@ class GITD_Presets
 		Wave(140, 2.80, 8.0, 2, 0.85, 1.00, 0.80, 1.00, 33.0);
 		Phase(0.0, 0.5, 0.75, 0.25);
 		Liquid(true, 0, 120, 255, 60, 170, 3, 2.00, true);
+	}
+
+	// ---- 34-42: MORE SHADES ON THE WALLS -------------------------------------
+	//
+	// Owner, 2026-09-18, on Deep, Frostbite, Red Alert and Hellscape: more
+	// variety on the walls, a few shades either way, a step closer to neon, and
+	// more wild neon ones.
+	//
+	// HOW THE VARIETY IS MADE, since it is not a new mechanism: the four lanes
+	// hash their colour with their own salt, so under the per-sector policy each
+	// lane lands somewhere ELSE in the hue window. A narrow window is one colour
+	// on every surface; a wide one gives a wall, its ceiling seam and the faces
+	// three related shades. The originals are deliberately narrow -- that is
+	// what makes them unify a level -- so these widen the window and lift
+	// saturation and value toward neon instead of changing what they are about.
+	//
+	// Every original is untouched: Deep, Frostbite, Red Alert, Hellscape and
+	// Cathedral are still exactly what they were.
+
+	// 34 -- DEEP, WIDER AND HOTTER. Its window opens from 45 degrees of blue to
+	// 70 through indigo, and saturation goes up rather than down, so a corridor
+	// reads as several blues lit from inside instead of one.
+	static void Abyssal(bool surfaceOnly)
+	{
+		Cells(0.22, 36.0, 0.10, 0.75);
+		if (surfaceOnly) return;
+		Window(185, 255, 0.70, 1.00, 0.45, 0.95);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  95, 1, 1.15);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  90, 1, 1.00);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 220, 1, 1.25);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 160, 1, 0.95);
+		Wave(300, 0.40, 0.7, 2, 0.55, 0.45, 0.55, 0.70, 12.0);
+		Liquid(true, 0, 40, 180, 255, 210, 1, 1.50, true);
+	}
+
+	// 35 -- FROSTBITE AT FULL BRIGHTNESS. The same long sqrt reach that made it
+	// spread and die slowly, with the window widened through cyan and the value
+	// pushed to the top: ice under a strip light rather than ice at dusk.
+	static void Glacier(bool surfaceOnly)
+	{
+		Cells(0.40, 30.0, 0.06, 0.65);
+		Tex(0.25, 0.060, 0.02, 1.4);
+		if (surfaceOnly) return;
+		Window(168, 215, 0.45, 0.85, 0.80, 1.00);
+		Lane("gitd_wf", true, 2, 0, 0, 0, 110, 2, 0.90);
+		Lane("gitd_wc", true, 2, 0, 0, 0, 110, 2, 0.90);
+		Lane("gitd_fg", true, 2, 0, 0, 0, 260, 2, 1.20);
+		Lane("gitd_cg", true, 2, 0, 0, 0, 190, 2, 1.00);
+		Liquid(true, 0, 170, 235, 255, 230, 2, 1.30, true);
+	}
+
+	// 36 -- RED ALERT, NOT ALL ONE RED. Red Alert is one fixed crimson on every
+	// surface, which is what makes it an alarm; this rolls each lane through
+	// crimson to amber, so the room is still alarmed but reads as several
+	// warning lights rather than one wash. The throb is kept and slowed.
+	static void Klaxon(bool surfaceOnly)
+	{
+		Tex(0.20, 0.070, 0.0, 1.6);
+		if (surfaceOnly) return;
+		Window(345, 30, 0.85, 1.00, 0.60, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  80, 3, 1.50);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  80, 3, 1.50);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 110, 3, 1.45);
+		Lane("gitd_cg", true, 1, 0, 0, 0,  95, 3, 1.35);
+		Throb(0.70, 0.75, 0.45);
+		Liquid(true, 0, 255, 80, 40, 180, 3, 1.70, true);
+	}
+
+	// 37 -- HELLSCAPE, LIT RATHER THAN SOAKED. The same two-colour ramp down to
+	// oxblood, but the near end walks crimson to ember-orange per lane and the
+	// value comes up, so the seams burn instead of the room being one red bath.
+	static void Inferno(bool surfaceOnly)
+	{
+		Cells(0.45, 20.0, 0.18, 0.50);
+		Tex(0.45, 0.050, 0.12, 2.0);
+		if (surfaceOnly) return;
+		Window(350, 38, 0.80, 1.00, 0.55, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  85, 1, 1.40, 2, 36,  6,  6);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  70, 1, 1.15, 2, 28,  5,  5);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 190, 1, 1.55, 2, 42,  8,  6);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 120, 1, 1.10, 2, 24,  4,  5);
+		Liquid(true, 0, 255, 90, 25, 240, 1, 1.80, true);
+	}
+
+	// ---- the wild end -------------------------------------------------------
+
+	// 38 -- NEON PURPLE, HARD. Blacklight's part of the spectrum at full
+	// saturation with an exponential falloff and a short reach, so every seam is
+	// a purple tube and the middle of the wall stays dark.
+	static void Ultraviolet(bool surfaceOnly)
+	{
+		Tex(0.55, 0.080, 0.03, 2.6);
+		if (surfaceOnly) return;
+		Window(262, 320, 0.90, 1.00, 0.75, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  45, 3, 1.90);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  45, 3, 1.90);
+		Lane("gitd_fg", true, 1, 0, 0, 0,  70, 3, 1.80);
+		Lane("gitd_cg", true, 1, 0, 0, 0,  60, 3, 1.70);
+		Liquid(true, 0, 220, 60, 255, 200, 3, 2.00, true);
+	}
+
+	// 39 -- NEON GREEN AND YELLOW, WITH TRACES RUNNING. Circuitry's flow at a
+	// wider spacing under an acid window, so the traces read as lit tubing
+	// rather than as circuitry. The most toxic-looking of the set.
+	static void Acid(bool surfaceOnly)
+	{
+		Flow(0.85, 20.0, 1.30, 2.6);
+		Tex(0.30, 0.055, 0.06, 1.8);
+		if (surfaceOnly) return;
+		Window(68, 112, 0.90, 1.00, 0.80, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  70, 2, 1.60);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  65, 2, 1.50);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 130, 2, 1.70);
+		Lane("gitd_cg", true, 1, 0, 0, 0, 100, 2, 1.40);
+		Liquid(true, 0, 140, 255, 40, 230, 2, 1.90, true);
+	}
+
+	// 40 -- TWO NEONS AT ONCE. Hot pink at the seam ramping to electric cyan at
+	// the far edge, explicit on every lane, so one wall carries both ends of a
+	// neon sign. Vaporwave ramps across the wheel too, but slowly and softly;
+	// this is the same idea at full saturation with a short, hard reach.
+	static void Bubblegum(bool surfaceOnly)
+	{
+		Tex(0.18, 0.045, 0.02, 1.5);
+		if (surfaceOnly) return;
+		Window(300, 345, 0.95, 1.00, 0.85, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  60, 3, 1.70, 2, 30, 230, 255);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  60, 3, 1.70, 2, 30, 230, 255);
+		Lane("gitd_fg", true, 1, 0, 0, 0, 100, 3, 1.80, 2, 20, 210, 255);
+		Lane("gitd_cg", true, 1, 0, 0, 0,  85, 3, 1.60, 2, 60, 180, 255);
+		Liquid(true, 0, 255, 60, 200, 220, 3, 2.00, true);
+	}
+
+	// 41 -- ELECTRIC. A near-white blue at the top of the value range on a very
+	// short reach, with a fast shallow throb: the seams read as live wiring
+	// rather than as lighting. Filament draws a room as line art in white; this
+	// is the same thinness with a colour and a pulse.
+	static void Voltage(bool surfaceOnly)
+	{
+		Tex(0.35, 0.095, 0.05, 2.4);
+		if (surfaceOnly) return;
+		Window(188, 214, 0.55, 0.85, 0.95, 1.00);
+		Lane("gitd_wf", true, 1, 0, 0, 0,  28, 3, 2.30);
+		Lane("gitd_wc", true, 1, 0, 0, 0,  24, 3, 2.20);
+		Lane("gitd_fg", true, 1, 0, 0, 0,  40, 3, 2.40);
+		Lane("gitd_cg", true, 1, 0, 0, 0,  34, 3, 2.10);
+		Throb(0.35, 0.40, 2.20);
+		Liquid(true, 0, 200, 240, 255, 190, 3, 2.20, true);
+	}
+
+	// 42 -- CATHEDRAL WITH A FLOOR. Cathedral lights a room only from above: its
+	// wall-from-floor and floor lanes are off, so the bottom of the room has no
+	// colour at all, and its deep-blue far end sits 200 units down a wall where
+	// most rooms never reach it. This keeps the light from above and gives the
+	// floor a cold pool to answer it, so the blue is somewhere you can see.
+	static void Nave(bool surfaceOnly)
+	{
+		Tex(0.20, 0.050, 0.01, 1.3);
+		if (surfaceOnly) return;
+		Lane("gitd_wf", true, 0,  40,  70, 140,  70, 2, 0.60, 2, 10, 14, 44);
+		Lane("gitd_fg", true, 0,  30,  60, 130, 150, 2, 0.75, 2,  8, 12, 40);
+		Lane("gitd_wc", true, 0, 255, 205, 120, 200, 2, 1.10, 2, 12, 18, 60);
+		Lane("gitd_cg", true, 0, 255, 190, 110, 180, 2, 0.90, 2, 12, 18, 60);
+		Wave(400, 0.15, 0.5, 1, 0.20, 0.30, 0.10);
+		Liquid(true, 0, 120, 150, 255, 140, 2, 0.8, false);
 	}
 }
