@@ -216,16 +216,30 @@ class GITD_Presets
 		Liquid(true, 0, 70, 210, 80, 120, 2, 1.0, true);
 	}
 
-	// 1 -- signature: cells, and the flat lanes carrying the look.
+	// 1 -- signature: cells, and the colour climbing every surface it touches.
+	//
+	// RETUNED 2026-09-20, at the owner's word. It used to be a floors-and-
+	// ceilings look: a 40-unit band at half intensity up from the floor seam and
+	// NO wall-from-ceiling lane at all. Two things followed, and both of them
+	// were the preset's fault rather than the engine's -- the walls read as
+	// unlit in a preset whose whole point is that the room is alive, and every
+	// wall/ceiling join was a hard line, because a join needs a glow on both
+	// sides and one side was switched off.
+	//
+	// So the walls now carry it: the floor seam climbs 110 units at nearly full
+	// intensity and the ceiling seam comes down 100 at 0.85. The flat faces keep
+	// their old numbers, so the floor is still the brightest surface in the room
+	// and the cells still do the work -- what changes is that the colour reaches
+	// the walls instead of stopping at the skirting.
 	static void Bioluminescent(bool surfaceOnly)
 	{
 		Cells(0.70, 20.0, 0.25, 0.45);
 		if (surfaceOnly) return;
-		Window(150, 200, 0.55, 0.90, 0.40, 0.80);
-		Lane("gitd_wf", true,  2, 0, 0, 0,  40, 2, 0.50);
-		Lane("gitd_wc", false, 2, 0, 0, 0,   0, 0, 0.00);
-		Lane("gitd_fg", true,  2, 0, 0, 0, 140, 2, 1.20);
-		Lane("gitd_cg", true,  2, 0, 0, 0,  90, 2, 0.70);
+		Window(150, 200, 0.55, 0.90, 0.45, 0.85);
+		Lane("gitd_wf", true, 2, 0, 0, 0, 110, 2, 0.95);
+		Lane("gitd_wc", true, 2, 0, 0, 0, 100, 2, 0.85);
+		Lane("gitd_fg", true, 2, 0, 0, 0, 140, 2, 1.20);
+		Lane("gitd_cg", true, 2, 0, 0, 0,  90, 2, 0.70);
 		Wave(220, 0.35, 0.6, 1, 0.30, 0.40, 0.20);
 		Liquid(true, 0, 40, 255, 190, 180, 2, 1.5, true);
 	}
