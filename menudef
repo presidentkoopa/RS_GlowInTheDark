@@ -132,6 +132,9 @@ OptionValue "GITD_LightDir"
 
 OptionMenu "GITDMain"
 {
+	// Says out loud whether corners are actually agreeing right now, and
+	// what is stopping them if they are not -- see zscript/gitd_menu.zs.
+	Class "GITD_MainMenu"
 	Title "GlowInTheDark"
 	StaticText "Four lanes: two on the walls, two on the floor", "gray"
 	StaticText "and ceiling faces themselves.", "gray"
@@ -147,6 +150,7 @@ OptionMenu "GITDMain"
 	Option "Seamless corners", "gitd_seamless", "OnOff"
 	Option "  Match reach and falloff too", "gitd_seamless_shape", "OnOff"
 	Option "  Keep them seamless under a wave", "gitd_seamless_wave", "OnOff"
+	Option "  Meet a lane the preset left off", "gitd_seamless_meet", "OnOff"
 	StaticText "Wall and floor agree on one colour where", "gray"
 	StaticText "they touch and ramp away to their own, so", "gray"
 	StaticText "the join has no edge. An explicit fade colour", "gray"

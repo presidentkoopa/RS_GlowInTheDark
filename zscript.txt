@@ -1,4 +1,4 @@
-// GlowInTheDark 2.0
+﻿// GlowInTheDark 2.0
 // Engine is UZDXREMA 5.0.0-rc.2; 4.12 is a safe floor for everything used here.
 version "4.12"
 
@@ -7,3 +7,6 @@ version "4.12"
 #include "zscript/gitd_presets.zs"
 #include "zscript/gitd_textures.zs"
 #include "zscript/gitd_handler.zs"
+// The main page reports whether corners are actually agreeing.
+#include "zscript/gitd_menu.zs"
+

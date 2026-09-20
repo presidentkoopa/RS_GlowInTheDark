@@ -49,15 +49,22 @@ server bool  gitd_seamless     = true;
 // phase, the floor face takes the wall-from-floor one), so the two sides of a
 // join beat together instead of half a cycle apart.
 //
-// Off by default because it overrides a preset's own phase offsets: Reactor
-// and Signal set the floor and ceiling deliberately out of step so the light
-// CLIMBS the room, and that effect goes while this is on.
+// ON by default as of 2026-09-20. It shipped off because the engine seeded a
+// wall's wave from the plane height and a flat's from its first linedef, so the
+// two sides of a join could not match even with the colour agreed -- this row
+// could only remove the hue step. Engine 406a1ab05f gives all four lanes ONE
+// per-sector seed, so the join now closes properly and there is no longer a
+// reason to leave the seam open by default.
+//
+// The cost, stated plainly: it overrides a preset's own phase offsets, so a
+// preset that deliberately climbs the room (Reactor, Signal) stops climbing.
+// Switch it off to get that back.
 //
 // It closes the join completely as of engine 406a1ab05f (2026-09-18): all four
 // lanes now hash ONE per-sector number, so the wave's brightness and the glow
 // grain match across a corner instead of differing by the seed. Before that
 // this row could only remove the hue step.
-server bool  gitd_seamless_wave = false;
+server bool  gitd_seamless_wave = true;
 
 // EMERGENCY LIGHTING, for RS_Ballistics' shot-out lights. Once this share of
 // a room's light fixtures is destroyed, that room's lanes lean to the
@@ -92,6 +99,21 @@ server color gitd_firelight_color = "FF7A1E";
 // colour, so the two ramps match in width and curve. On, the Floor Face and
 // Ceiling Face shape sliders stop doing anything wherever a wall lane meets
 // them -- which is why it is not the default any more.
+// A JUNCTION WITH ONLY ONE SIDE DRAWN. Several presets switch a lane off as
+// their signature -- Bioluminescent and Moss have no wall-from-ceiling lane,
+// Ember no ceiling face, Cathedral neither of the lower two. Seamless corners
+// work by making two glows AGREE at the line they share, so with one side dark
+// there is nothing to agree with and the join is a hard line across every room.
+// That is the seam the owner photographed on 2026-09-20.
+//
+// On, the dark side is lit just enough to meet the lit one: the junction
+// colour, a quarter of the other side's reach, and under half its intensity.
+// Enough to close the line, not enough to turn Cathedral into Nave -- a preset
+// that lights a room from above still does.
+//
+// Off restores exactly what those presets did before.
+server bool  gitd_seamless_meet  = true;
+
 server bool  gitd_seamless_shape = false;
 
 // Seamless WALLS. Corners fix the join inside one sector; this fixes the join

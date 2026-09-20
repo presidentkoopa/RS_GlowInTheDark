@@ -159,6 +159,7 @@ class GITD_Handler : EventHandler
 	private ui transient bool liqOn, liqWalls;
 	private ui transient bool seamless;
 	private ui transient bool seamShape;
+	private ui transient bool meetOff;
 
 	// EMERGENCY LIGHTING -- a room that has lost its lamps.
 	//
@@ -1039,7 +1040,8 @@ class GITD_Handler : EventHandler
 		// neighbour's phase so the two do not beat half a cycle apart.
 		seamless = GITD_Util.GetB("gitd_seamless", true)
 			&& (GITD_Util.GetF("gitd_wave_len") <= 0.0
-				|| GITD_Util.GetB("gitd_seamless_wave", false));
+				|| GITD_Util.GetB("gitd_seamless_wave", true));
+		meetOff = seamless && GITD_Util.GetB("gitd_seamless_meet", true);
 		seamShape = GITD_Util.GetB("gitd_seamless_shape", false);
 
 		wallSeam  = GITD_Util.GetB("gitd_seamless_walls", true);
@@ -1254,6 +1256,50 @@ class GITD_Handler : EventHandler
 				cWC = join;
 				cCG = join;
 				if (seamShape) { rCG = rWC; kCG = kWC; iCG = iWC; }
+			}
+
+			// ONE SIDE DRAWN, THE OTHER DARK. Everything above needs both sides
+			// of a junction to exist -- it agrees two colours at the line they
+			// share. A preset that switches a lane off as its signature
+			// (Bioluminescent and Moss have no wall-from-ceiling lane, Ember no
+			// ceiling face) therefore had a HARD LINE at that join in every
+			// room, and "seamless corners" being on said nothing about it.
+			//
+			// So light the dark side just enough to meet the lit one: the same
+			// colour at the line, a quarter of the reach, under half the
+			// intensity. The join closes and the preset keeps its character --
+			// a room lit from above is still lit from above.
+			if (meetOff)
+			{
+				if (wfOn && !fgOn)
+				{
+					cFG = cWF; fFG = fWF; kFG = kWF;
+					rFG = max(rWF * 0.25, 24.0);
+					iFG = iWF * 0.45;
+					fgOn = true;
+				}
+				else if (fgOn && !wfOn)
+				{
+					cWF = cFG; fWF = fFG; kWF = kFG;
+					rWF = max(rFG * 0.25, 24.0);
+					iWF = iFG * 0.45;
+					wfOn = true;
+				}
+
+				if (wcOn && !cgOn)
+				{
+					cCG = cWC; fCG = fWC; kCG = kWC;
+					rCG = max(rWC * 0.25, 24.0);
+					iCG = iWC * 0.45;
+					cgOn = true;
+				}
+				else if (cgOn && !wcOn)
+				{
+					cWC = cCG; fWC = fCG; kWC = kCG;
+					rWC = max(rCG * 0.25, 24.0);
+					iWC = iCG * 0.45;
+					wcOn = true;
+				}
 			}
 		}
 
@@ -1581,7 +1627,8 @@ class GITD_Handler : EventHandler
 		h = Acc(h, GITD_Util.GetB("gitd_liq_on", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_liq_walls", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless", true) ? 1 : 0);
-		h = Acc(h, GITD_Util.GetB("gitd_seamless_wave", false) ? 1 : 0);
+		h = Acc(h, GITD_Util.GetB("gitd_seamless_wave", true) ? 1 : 0);
+		h = Acc(h, GITD_Util.GetB("gitd_seamless_meet", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_emergency", true) ? 1 : 0);
 		h = Acc(h, int(GITD_Util.GetF("gitd_emergency_share", 0.75) * 1000.0));
 		h = Acc(h, int(GITD_Util.GetF("gitd_emergency_gain", 1.35) * 1000.0));
