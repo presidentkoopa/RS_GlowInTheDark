@@ -1041,7 +1041,13 @@ class GITD_Handler : EventHandler
 		seamless = GITD_Util.GetB("gitd_seamless", true)
 			&& (GITD_Util.GetF("gitd_wave_len") <= 0.0
 				|| GITD_Util.GetB("gitd_seamless_wave", true));
-		meetOff = seamless && GITD_Util.GetB("gitd_seamless_meet", true);
+		// NOT gated behind the wave condition above. A junction with one side
+		// dark is a hard line whether or not a wave is running -- and gating it
+		// there meant an ini that already had the wave row off kept the seam
+		// with the fix installed, because changing a DEFAULT does not reach a
+		// config that has already been saved.
+		meetOff = GITD_Util.GetB("gitd_seamless", true)
+			&& GITD_Util.GetB("gitd_seamless_meet", true);
 		seamShape = GITD_Util.GetB("gitd_seamless_shape", false);
 
 		wallSeam  = GITD_Util.GetB("gitd_seamless_walls", true);
@@ -1258,48 +1264,49 @@ class GITD_Handler : EventHandler
 				if (seamShape) { rCG = rWC; kCG = kWC; iCG = iWC; }
 			}
 
-			// ONE SIDE DRAWN, THE OTHER DARK. Everything above needs both sides
-			// of a junction to exist -- it agrees two colours at the line they
-			// share. A preset that switches a lane off as its signature
-			// (Bioluminescent and Moss have no wall-from-ceiling lane, Ember no
-			// ceiling face) therefore had a HARD LINE at that join in every
-			// room, and "seamless corners" being on said nothing about it.
-			//
-			// So light the dark side just enough to meet the lit one: the same
-			// colour at the line, a quarter of the reach, under half the
-			// intensity. The join closes and the preset keeps its character --
-			// a room lit from above is still lit from above.
-			if (meetOff)
-			{
-				if (wfOn && !fgOn)
-				{
-					cFG = cWF; fFG = fWF; kFG = kWF;
-					rFG = max(rWF * 0.25, 24.0);
-					iFG = iWF * 0.45;
-					fgOn = true;
-				}
-				else if (fgOn && !wfOn)
-				{
-					cWF = cFG; fWF = fFG; kWF = kFG;
-					rWF = max(rFG * 0.25, 24.0);
-					iWF = iFG * 0.45;
-					wfOn = true;
-				}
+		}
 
-				if (wcOn && !cgOn)
-				{
-					cCG = cWC; fCG = fWC; kCG = kWC;
-					rCG = max(rWC * 0.25, 24.0);
-					iCG = iWC * 0.45;
-					cgOn = true;
-				}
-				else if (cgOn && !wcOn)
-				{
-					cWC = cCG; fWC = fCG; kWC = kCG;
-					rWC = max(rCG * 0.25, 24.0);
-					iWC = iCG * 0.45;
-					wcOn = true;
-				}
+		// ONE SIDE DRAWN, THE OTHER DARK. Everything above needs both sides
+		// of a junction to exist -- it agrees two colours at the line they
+		// share. A preset that switches a lane off as its signature
+		// (Bioluminescent and Moss have no wall-from-ceiling lane, Ember no
+		// ceiling face) therefore had a HARD LINE at that join in every
+		// room, and "seamless corners" being on said nothing about it.
+		//
+		// So light the dark side just enough to meet the lit one: the same
+		// colour at the line, a quarter of the reach, under half the
+		// intensity. The join closes and the preset keeps its character --
+		// a room lit from above is still lit from above.
+		if (meetOff)
+		{
+			if (wfOn && !fgOn)
+			{
+				cFG = cWF; fFG = fWF; kFG = kWF;
+				rFG = max(rWF * 0.25, 24.0);
+				iFG = iWF * 0.45;
+				fgOn = true;
+			}
+			else if (fgOn && !wfOn)
+			{
+				cWF = cFG; fWF = fFG; kWF = kFG;
+				rWF = max(rFG * 0.25, 24.0);
+				iWF = iFG * 0.45;
+				wfOn = true;
+			}
+
+			if (wcOn && !cgOn)
+			{
+				cCG = cWC; fCG = fWC; kCG = kWC;
+				rCG = max(rWC * 0.25, 24.0);
+				iCG = iWC * 0.45;
+				cgOn = true;
+			}
+			else if (cgOn && !wcOn)
+			{
+				cWC = cCG; fWC = fCG; kWC = kCG;
+				rWC = max(rCG * 0.25, 24.0);
+				iWC = iCG * 0.45;
+				wcOn = true;
 			}
 		}
 
