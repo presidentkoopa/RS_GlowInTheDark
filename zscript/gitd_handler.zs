@@ -965,6 +965,7 @@ class GITD_Handler : EventHandler
 	// The emergency values ride the same apply: they are in SettingsHash, so
 	// moving one repaints within a fifth of a second with the menu open.
 	// LINT-UI-LIVE: gitd_emergency_share gitd_emergency_gain gitd_emergency_color
+	// LINT-UI-LIVE: gitd_seamless_meet_amt
 	// LINT-UI-LIVE: gitd_firelight_mix gitd_firelight_gain gitd_firelight_color
 	// LINT-UI-LIVE: gitd_liq_color gitd_liq_reach gitd_liq_intensity gitd_liq_farcolor
 	// LINT-UI-LIVE: gitd_wall_blend gitd_hue_min gitd_hue_max gitd_sat_min gitd_sat_max gitd_val_min gitd_val_max gitd_seed
@@ -1279,34 +1280,38 @@ class GITD_Handler : EventHandler
 		// a room lit from above is still lit from above.
 		if (meetOff)
 		{
-			if (wfOn && !fgOn)
-			{
-				cFG = cWF; fFG = fWF; kFG = kWF;
-				rFG = max(rWF * 0.25, 24.0);
-				iFG = iWF * 0.45;
-				fgOn = true;
-			}
-			else if (fgOn && !wfOn)
-			{
-				cWF = cFG; fWF = fFG; kWF = kFG;
-				rWF = max(rFG * 0.25, 24.0);
-				iWF = iFG * 0.45;
-				wfOn = true;
-			}
+			// How much of the lit side the dark side takes. One dial, because the
+			// first cut -- a quarter of the reach at 0.45 intensity -- read as
+			// texture rather than as colour.
+			double amt = clamp(GITD_Util.GetF("gitd_seamless_meet_amt", 0.55), 0.05, 1.0);
+			double rf = 0.20 + 0.45 * amt;   // a fifth of the reach, up to two thirds
 
-			if (wcOn && !cgOn)
+			if (wfOn && !fgOn) { cFG = cWF; fFG = fWF; kFG = kWF; rFG = max(rWF * rf, 32.0); iFG = iWF * amt; fgOn = true; }
+			else if (fgOn && !wfOn) { cWF = cFG; fWF = fFG; kWF = kFG; rWF = max(rFG * rf, 32.0); iWF = iFG * amt; wfOn = true; }
+
+			if (wcOn && !cgOn) { cCG = cWC; fCG = fWC; kCG = kWC; rCG = max(rWC * rf, 32.0); iCG = iWC * amt; cgOn = true; }
+			else if (cgOn && !wcOn) { cWC = cCG; fWC = fCG; kWC = kCG; rWC = max(rCG * rf, 32.0); iWC = iCG * amt; wcOn = true; }
+
+			// A WHOLE CLASS DARK. The pairs above only fire when ONE side of a
+			// junction is off, so a preset that switches off BOTH wall lanes (Spore)
+			// or both flats left that class dead and slipped through. The owner's
+			// rule: a walls-only look still touches the flats a little, and a
+			// flats-only look still touches the walls.
+			if (!wfOn && !wcOn && (fgOn || cgOn))
 			{
-				cCG = cWC; fCG = fWC; kCG = kWC;
-				rCG = max(rWC * 0.25, 24.0);
-				iCG = iWC * 0.45;
-				cgOn = true;
+				Color src = fgOn ? cFG : cCG; Color srcFar = fgOn ? fFG : fCG;
+				double srcR = fgOn ? rFG : rCG; double srcI = fgOn ? iFG : iCG;
+				int srcK = fgOn ? kFG : kCG;
+				cWF = src; fWF = srcFar; kWF = srcK; rWF = max(srcR * rf, 32.0); iWF = srcI * amt; wfOn = true;
+				cWC = src; fWC = srcFar; kWC = srcK; rWC = max(srcR * rf, 32.0); iWC = srcI * amt; wcOn = true;
 			}
-			else if (cgOn && !wcOn)
+			else if (!fgOn && !cgOn && (wfOn || wcOn))
 			{
-				cWC = cCG; fWC = fCG; kWC = kCG;
-				rWC = max(rCG * 0.25, 24.0);
-				iWC = iCG * 0.45;
-				wcOn = true;
+				Color src = wfOn ? cWF : cWC; Color srcFar = wfOn ? fWF : fWC;
+				double srcR = wfOn ? rWF : rWC; double srcI = wfOn ? iWF : iWC;
+				int srcK = wfOn ? kWF : kWC;
+				cFG = src; fFG = srcFar; kFG = srcK; rFG = max(srcR * rf, 32.0); iFG = srcI * amt; fgOn = true;
+				cCG = src; fCG = srcFar; kCG = srcK; rCG = max(srcR * rf, 32.0); iCG = srcI * amt; cgOn = true;
 			}
 		}
 
@@ -1636,6 +1641,7 @@ class GITD_Handler : EventHandler
 		h = Acc(h, GITD_Util.GetB("gitd_seamless", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless_wave", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless_meet", true) ? 1 : 0);
+		h = Acc(h, int(GITD_Util.GetF("gitd_seamless_meet_amt", 0.55) * 1000.0));
 		h = Acc(h, GITD_Util.GetB("gitd_emergency", true) ? 1 : 0);
 		h = Acc(h, int(GITD_Util.GetF("gitd_emergency_share", 0.75) * 1000.0));
 		h = Acc(h, int(GITD_Util.GetF("gitd_emergency_gain", 1.35) * 1000.0));

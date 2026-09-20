@@ -113,6 +113,17 @@ server color gitd_firelight_color = "FF7A1E";
 //
 // Off restores exactly what those presets did before.
 server bool  gitd_seamless_meet  = true;
+// HOW MUCH of the lit side the dark side takes. The owner's rule, 2026-09-20:
+// "anything just walls / just floor and ceiling should affect floor and ceiling
+// just a little / and walls just a little". So no preset leaves a whole class
+// of surface dead -- a walls-only look still touches the flats, a flats-only
+// look still touches the walls.
+//
+// It scales both terms: the filled lane takes this share of the lit lane's
+// intensity, and a reach that grows from a fifth to two thirds of it. 0.55 is
+// "clearly there, clearly not the main event". 1.0 makes the two sides equal,
+// which is no longer a fill -- it is the preset lighting everything.
+server float gitd_seamless_meet_amt = 0.55;
 
 server bool  gitd_seamless_shape = false;
 
