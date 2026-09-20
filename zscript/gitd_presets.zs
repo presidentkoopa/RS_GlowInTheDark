@@ -222,8 +222,12 @@ class GITD_Presets
 		if (surfaceOnly) return;
 		Lane("gitd_wf", true,  0, 255, 170,  90,  56, 0, 0.60);
 		Lane("gitd_wc", true,  0, 150, 140, 120,  48, 0, 0.45);
-		Lane("gitd_fg", false, 0, 128, 128, 128,   0, 0, 0.00);
-		Lane("gitd_cg", false, 0, 128, 128, 128,   0, 0, 0.00);
+		// THE OTHER CLASS, JUST A LITTLE. The owner's rule, 2026-09-20: a look
+		// that lights only the walls still touches the floor and ceiling. Small
+		// reach, a third of the intensity -- enough to close the join and read
+		// as colour, not enough to change what the preset is.
+		Lane("gitd_fg", true,  0, 255, 170,  90,  32, 0, 0.33);
+		Lane("gitd_cg", true,  0, 150, 140, 120,  32, 0, 0.25);
 		Liquid(true, 0, 70, 210, 80, 120, 2, 1.0, true);
 	}
 
@@ -298,7 +302,9 @@ class GITD_Presets
 		Lane("gitd_wf", true,  3, 0, 0, 0,  60, 1, 1.00);
 		Lane("gitd_wc", true,  3, 0, 0, 0,  45, 1, 0.50);
 		Lane("gitd_fg", true,  3, 0, 0, 0, 120, 1, 0.90);
-		Lane("gitd_cg", false, 3, 0, 0, 0,   0, 0, 0.00);
+		// The ceiling join, just enough to close it: this preset lights from
+		// the floor up, and a dark ceiling face against a lit wall was a line.
+		Lane("gitd_cg", true,  3, 0, 0, 0,  32, 1, 0.28);
 		Throb(0.25, 0.50);
 		Liquid(true, 0, 255, 90, 20, 180, 1, 1.5, true);
 	}
@@ -453,8 +459,12 @@ class GITD_Presets
 		Cells(0.90, 12.0, 0.05, 0.25);
 		if (surfaceOnly) return;
 		Window(55, 85, 0.50, 0.80, 0.20, 0.50);
-		Lane("gitd_wf", false, 2, 0, 0, 0,   0, 0, 0.00);
-		Lane("gitd_wc", false, 2, 0, 0, 0,   0, 0, 0.00);
+		// THE OTHER CLASS, JUST A LITTLE. The owner's rule, 2026-09-20: a look
+		// that lights only the flats still touches the walls. Small
+		// reach, a third of the intensity -- enough to close the join and read
+		// as colour, not enough to change what the preset is.
+		Lane("gitd_wf", true,  2, 0, 0, 0,  58, 2, 0.39);
+		Lane("gitd_wc", true,  2, 0, 0, 0,  40, 2, 0.25);
 		Lane("gitd_fg", true,  2, 0, 0, 0, 130, 2, 0.70);
 		Lane("gitd_cg", true,  2, 0, 0, 0,  90, 2, 0.45);
 		Liquid(true, 0, 140, 190, 60, 150, 2, 0.9, false);
@@ -632,7 +642,9 @@ class GITD_Presets
 		if (surfaceOnly) return;
 		Window(80, 140, 0.40, 0.70, 0.30, 0.70);
 		Lane("gitd_wf", true, 2, 0, 0, 0,  55, 2, 0.45);
-		Lane("gitd_wc", false, 2, 0, 0, 0,  0, 0, 0.00);
+		// The ceiling join, just enough to close it -- the ceiling face is lit
+		// and the wall under it was not.
+		Lane("gitd_wc", true, 2, 0, 0, 0,  54, 2, 0.30);
 		Lane("gitd_fg", true, 2, 0, 0, 0, 240, 2, 1.00);
 		Lane("gitd_cg", true, 2, 0, 0, 0, 120, 2, 0.55);
 		Liquid(true, 0, 110, 200, 120, 190, 2, 1.00, true);

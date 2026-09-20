@@ -164,7 +164,6 @@ class GITD_Handler : EventHandler
 	private ui transient bool liqOn, liqWalls;
 	private ui transient bool seamless;
 	private ui transient bool seamShape;
-	private ui transient bool meetOff;
 
 	// EMERGENCY LIGHTING -- a room that has lost its lamps.
 	//
@@ -971,7 +970,6 @@ class GITD_Handler : EventHandler
 	// The emergency values ride the same apply: they are in SettingsHash, so
 	// moving one repaints within a fifth of a second with the menu open.
 	// LINT-UI-LIVE: gitd_emergency_share gitd_emergency_gain gitd_emergency_color
-	// LINT-UI-LIVE: gitd_seamless_meet_amt
 	// LINT-UI-LIVE: gitd_firelight_mix gitd_firelight_gain gitd_firelight_color
 	// LINT-UI-LIVE: gitd_liq_color gitd_liq_reach gitd_liq_intensity gitd_liq_farcolor
 	// LINT-UI-LIVE: gitd_wall_blend gitd_hue_min gitd_hue_max gitd_sat_min gitd_sat_max gitd_val_min gitd_val_max gitd_seed
@@ -1048,13 +1046,6 @@ class GITD_Handler : EventHandler
 		seamless = GITD_Util.GetB("gitd_seamless", true)
 			&& (GITD_Util.GetF("gitd_wave_len") <= 0.0
 				|| GITD_Util.GetB("gitd_seamless_wave", true));
-		// NOT gated behind the wave condition above. A junction with one side
-		// dark is a hard line whether or not a wave is running -- and gating it
-		// there meant an ini that already had the wave row off kept the seam
-		// with the fix installed, because changing a DEFAULT does not reach a
-		// config that has already been saved.
-		meetOff = GITD_Util.GetB("gitd_seamless", true)
-			&& GITD_Util.GetB("gitd_seamless_meet", true);
 		seamShape = GITD_Util.GetB("gitd_seamless_shape", false);
 
 		wallSeam  = GITD_Util.GetB("gitd_seamless_walls", true);
@@ -1276,58 +1267,15 @@ class GITD_Handler : EventHandler
 
 		}
 
-		// ONE SIDE DRAWN, THE OTHER DARK. Everything above needs both sides
-		// of a junction to exist -- it agrees two colours at the line they
-		// share. A preset that switches a lane off as its signature
-		// (Bioluminescent and Moss have no wall-from-ceiling lane, Ember no
-		// ceiling face) therefore had a HARD LINE at that join in every
-		// room, and "seamless corners" being on said nothing about it.
-		//
-		// So light the dark side just enough to meet the lit one: the same
-		// colour at the line, a quarter of the reach, under half the
-		// intensity. The join closes and the preset keeps its character --
-		// a room lit from above is still lit from above.
-		if (meetOff)
-		{
-			// How much of the lit side the dark side takes. One dial, because the
-			// first cut -- a quarter of the reach at 0.45 intensity -- read as
-			// texture rather than as colour.
-			double amt = clamp(GITD_Util.GetF("gitd_seamless_meet_amt", 0.55), 0.05, 1.0);
-			double rf = 0.20 + 0.45 * amt;   // a fifth of the reach, up to two thirds
-
-			// A FABRICATED LANE STARTS AT THE SEAM. Its whole job is to carry the
-			// join, so it takes the lit side's colour but never its inset -- an
-			// inset lane is one the preset deliberately kept off the seam.
-
-
-			if (wfOn && !fgOn) { cFG = cWF; fFG = fWF; kFG = kWF; rFG = max(rWF * rf, 32.0); iFG = iWF * amt; nFG = 0.0; fgOn = true; }
-			else if (fgOn && !wfOn) { cWF = cFG; fWF = fFG; kWF = kFG; rWF = max(rFG * rf, 32.0); iWF = iFG * amt; nWF = 0.0; wfOn = true; }
-
-			if (wcOn && !cgOn) { cCG = cWC; fCG = fWC; kCG = kWC; rCG = max(rWC * rf, 32.0); iCG = iWC * amt; nCG = 0.0; cgOn = true; }
-			else if (cgOn && !wcOn) { cWC = cCG; fWC = fCG; kWC = kCG; rWC = max(rCG * rf, 32.0); iWC = iCG * amt; nWC = 0.0; wcOn = true; }
-
-			// A WHOLE CLASS DARK. The pairs above only fire when ONE side of a
-			// junction is off, so a preset that switches off BOTH wall lanes (Spore)
-			// or both flats left that class dead and slipped through. The owner's
-			// rule: a walls-only look still touches the flats a little, and a
-			// flats-only look still touches the walls.
-			if (!wfOn && !wcOn && (fgOn || cgOn))
-			{
-				Color src = fgOn ? cFG : cCG; Color srcFar = fgOn ? fFG : fCG;
-				double srcR = fgOn ? rFG : rCG; double srcI = fgOn ? iFG : iCG;
-				int srcK = fgOn ? kFG : kCG;
-				cWF = src; fWF = srcFar; kWF = srcK; rWF = max(srcR * rf, 32.0); iWF = srcI * amt; nWF = 0.0; wfOn = true;
-				cWC = src; fWC = srcFar; kWC = srcK; rWC = max(srcR * rf, 32.0); iWC = srcI * amt; nWC = 0.0; wcOn = true;
-			}
-			else if (!fgOn && !cgOn && (wfOn || wcOn))
-			{
-				Color src = wfOn ? cWF : cWC; Color srcFar = wfOn ? fWF : fWC;
-				double srcR = wfOn ? rWF : rWC; double srcI = wfOn ? iWF : iWC;
-				int srcK = wfOn ? kWF : kWC;
-				cFG = src; fFG = srcFar; kFG = srcK; rFG = max(srcR * rf, 32.0); iFG = srcI * amt; nFG = 0.0; fgOn = true;
-				cCG = src; fCG = srcFar; kCG = srcK; rCG = max(srcR * rf, 32.0); iCG = srcI * amt; nCG = 0.0; cgOn = true;
-			}
-		}
+		// A JUNCTION WITH ONE SIDE ONLY is now the preset's own business. The
+		// runtime used to fabricate the missing lane here; the four presets that
+		// needed it (VanillaPlus, Spore, Ember, Moss) carry a small partner lane
+		// of their own instead, where it can be seen, tuned and switched off like
+		// any other lane. The owner's rule still holds -- a walls-only look still
+		// touches the flats a little, a flats-only look still touches the walls --
+		// it is just written where a preset is read rather than inferred at draw
+		// time. A lane that fades out before the seam (gitd_*_inset) is what
+		// closes a join now.
 
 		// EMERGENCY LIGHTING. This room has lost most of its light fixtures
 		// (RS_Ballistics' shot-out lights), so its lanes lean to the emergency
@@ -1662,8 +1610,6 @@ class GITD_Handler : EventHandler
 		h = Acc(h, GITD_Util.GetB("gitd_liq_walls", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless", true) ? 1 : 0);
 		h = Acc(h, GITD_Util.GetB("gitd_seamless_wave", true) ? 1 : 0);
-		h = Acc(h, GITD_Util.GetB("gitd_seamless_meet", true) ? 1 : 0);
-		h = Acc(h, int(GITD_Util.GetF("gitd_seamless_meet_amt", 0.55) * 1000.0));
 		h = Acc(h, GITD_Util.GetB("gitd_emergency", true) ? 1 : 0);
 		h = Acc(h, int(GITD_Util.GetF("gitd_emergency_share", 0.75) * 1000.0));
 		h = Acc(h, int(GITD_Util.GetF("gitd_emergency_gain", 1.35) * 1000.0));

@@ -41,16 +41,13 @@ class GITD_MainMenu : OptionMenu
 		// A junction needs both of its sides drawn.
 		bool wf = LaneWord("gitd_wf") == "on", wc = LaneWord("gitd_wc") == "on";
 		bool fg = LaneWord("gitd_fg") == "on", cg = LaneWord("gitd_cg") == "on";
-		let meet = CVar.FindCVar("gitd_seamless_meet");
-		bool meeting = !meet || meet.GetBool();
-
 		String half = "";
 		if (wc != cg) half = "the ceiling join has one side only";
 		if (wf != fg) half = (half.Length() > 0) ? "both joins have one side only" : "the floor join has one side only";
 
 		if (half.Length() == 0) return "Corners: agreeing on both joins.";
-		if (meeting) return String.Format("Corners: %s -- the dark side is lit to meet it.", half);
-		return String.Format("Corners: NOT agreeing -- %s, and the meet row is off.", half);
+		return String.Format("Corners: NOT agreeing -- %s;"
+			.. " this preset draws one side of it.", half);
 	}
 
 	override void Ticker()

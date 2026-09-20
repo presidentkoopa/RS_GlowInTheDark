@@ -99,32 +99,6 @@ server color gitd_firelight_color = "FF7A1E";
 // colour, so the two ramps match in width and curve. On, the Floor Face and
 // Ceiling Face shape sliders stop doing anything wherever a wall lane meets
 // them -- which is why it is not the default any more.
-// A JUNCTION WITH ONLY ONE SIDE DRAWN. Several presets switch a lane off as
-// their signature -- Bioluminescent and Moss have no wall-from-ceiling lane,
-// Ember no ceiling face, Cathedral neither of the lower two. Seamless corners
-// work by making two glows AGREE at the line they share, so with one side dark
-// there is nothing to agree with and the join is a hard line across every room.
-// That is the seam the owner photographed on 2026-09-20.
-//
-// On, the dark side is lit just enough to meet the lit one: the junction
-// colour, a quarter of the other side's reach, and under half its intensity.
-// Enough to close the line, not enough to turn Cathedral into Nave -- a preset
-// that lights a room from above still does.
-//
-// Off restores exactly what those presets did before.
-server bool  gitd_seamless_meet  = true;
-// HOW MUCH of the lit side the dark side takes. The owner's rule, 2026-09-20:
-// "anything just walls / just floor and ceiling should affect floor and ceiling
-// just a little / and walls just a little". So no preset leaves a whole class
-// of surface dead -- a walls-only look still touches the flats, a flats-only
-// look still touches the walls.
-//
-// It scales both terms: the filled lane takes this share of the lit lane's
-// intensity, and a reach that grows from a fifth to two thirds of it. 0.55 is
-// "clearly there, clearly not the main event". 1.0 makes the two sides equal,
-// which is no longer a fill -- it is the preset lighting everything.
-server float gitd_seamless_meet_amt = 0.55;
-
 server bool  gitd_seamless_shape = false;
 
 // Seamless WALLS. Corners fix the join inside one sector; this fixes the join
