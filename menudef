@@ -248,6 +248,11 @@ OptionMenu "GITDLaneWF"
 	ColorPicker "Fixed colour", "gitd_wf_color"
 	StaticText ""
 	Slider "Reach", "gitd_wf_reach", 0, 512, 8, 1
+	Slider "Starts in from the seam", "gitd_wf_inset", 0, 256, 4, 1
+	StaticText "0 starts it AT the seam, brightest there and fading", "gray"
+	StaticText "up the wall. Higher makes it dark at the seam and", "gray"
+	StaticText "come up further in, so the surface glows rather", "gray"
+	StaticText "than the join does.", "gray"
 	Option "Falloff", "gitd_wf_falloff", "GITD_Falloff"
 	Slider "Intensity", "gitd_wf_intensity", 0, 3, 0.05, 2
 	StaticText ""
@@ -266,6 +271,11 @@ OptionMenu "GITDLaneWC"
 	ColorPicker "Fixed colour", "gitd_wc_color"
 	StaticText ""
 	Slider "Reach", "gitd_wc_reach", 0, 512, 8, 1
+	Slider "Starts in from the seam", "gitd_wc_inset", 0, 256, 4, 1
+	StaticText "0 starts it AT the seam, brightest there and fading", "gray"
+	StaticText "down the wall. Higher makes it dark at the seam and", "gray"
+	StaticText "come up further in, so the surface glows rather", "gray"
+	StaticText "than the join does.", "gray"
 	Option "Falloff", "gitd_wc_falloff", "GITD_Falloff"
 	Slider "Intensity", "gitd_wc_intensity", 0, 3, 0.05, 2
 	StaticText ""
@@ -285,6 +295,11 @@ OptionMenu "GITDLaneFG"
 	ColorPicker "Fixed colour", "gitd_fg_color"
 	StaticText ""
 	Slider "Reach", "gitd_fg_reach", 0, 512, 8, 1
+	Slider "Starts in from the seam", "gitd_fg_inset", 0, 256, 4, 1
+	StaticText "0 starts it AT the seam, brightest there and fading", "gray"
+	StaticText "in from the edge. Higher makes it dark at the seam and", "gray"
+	StaticText "come up further in, so the surface glows rather", "gray"
+	StaticText "than the join does.", "gray"
 	Option "Falloff", "gitd_fg_falloff", "GITD_Falloff"
 	Slider "Intensity", "gitd_fg_intensity", 0, 3, 0.05, 2
 	StaticText ""
@@ -303,6 +318,11 @@ OptionMenu "GITDLaneCG"
 	ColorPicker "Fixed colour", "gitd_cg_color"
 	StaticText ""
 	Slider "Reach", "gitd_cg_reach", 0, 512, 8, 1
+	Slider "Starts in from the seam", "gitd_cg_inset", 0, 256, 4, 1
+	StaticText "0 starts it AT the seam, brightest there and fading", "gray"
+	StaticText "in from the edge. Higher makes it dark at the seam and", "gray"
+	StaticText "come up further in, so the surface glows rather", "gray"
+	StaticText "than the join does.", "gray"
 	Option "Falloff", "gitd_cg_falloff", "GITD_Falloff"
 	Slider "Intensity", "gitd_cg_intensity", 0, 3, 0.05, 2
 	StaticText ""
@@ -326,6 +346,11 @@ OptionMenu "GITDLiquid"
 	Option "Colour source", "gitd_liq_policy", "GITD_Policy"
 	ColorPicker "Fixed colour", "gitd_liq_color"
 	Slider "Reach", "gitd_liq_reach", 0, 512, 8, 1
+	Slider "Starts in from the seam", "gitd_liq_inset", 0, 256, 4, 1
+	StaticText "0 starts it AT the seam, brightest there and fading", "gray"
+	StaticText "in from the edge. Higher makes it dark at the seam and", "gray"
+	StaticText "come up further in, so the surface glows rather", "gray"
+	StaticText "than the join does.", "gray"
 	Option "Falloff", "gitd_liq_falloff", "GITD_Falloff"
 	Slider "Intensity", "gitd_liq_intensity", 0, 3, 0.05, 2
 	StaticText ""

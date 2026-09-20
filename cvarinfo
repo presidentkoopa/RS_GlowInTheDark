@@ -137,6 +137,29 @@ server bool  gitd_seamless_shape = false;
 server bool  gitd_seamless_walls = true;
 server float gitd_wall_blend      = 0.5;
 
+
+// ---------------------------------------------------------------- inset --
+// HOW FAR IN FROM THE SEAM A LANE STARTS. Engine bb9bd1ba56, asked for by the
+// owner on 2026-09-20: "bio has a harsh cut where it hits the seams. can we
+// have it fade OUT before it hits the seams, like other ones fade IN from
+// them?"
+//
+// Every glow in this family is brightest AT the plane and fades away from it,
+// so a preset that lights the flats and not the walls puts a surface at full
+// brightness hard against an unlit one and the join is a cut. An inset makes
+// the lane climb from dark at the seam to full over this distance, and only
+// then start its falloff -- a floor that glows in its middle and lets the
+// corners go dark.
+//
+// Map units, the same quantity as the reach, and the shader clamps it to the
+// reach so a lane cannot be inverted by overshooting. 0 is exactly the old
+// curve, which is why every preset that does not ask for one is unchanged.
+server float gitd_wf_inset     = 0.0;
+server float gitd_wc_inset     = 0.0;
+server float gitd_fg_inset     = 0.0;
+server float gitd_cg_inset     = 0.0;
+server float gitd_liq_inset    = 0.0;
+
 // ------------------------------------------------------------ randomiser --
 // Governs every policy, not just the random one: fixed colour aside, all
 // colour sources land in HSV and get clamped into these windows.

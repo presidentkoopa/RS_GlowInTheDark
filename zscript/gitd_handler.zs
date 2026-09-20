@@ -32,6 +32,9 @@ class GITD_Lane
 	double intensity;
 	int farMode;        // 0 off, 1 auto-derived, 2 explicit
 	Color farCol;
+	// How far in from the seam the lane starts. 0 = brightest at the seam,
+	// which is what every lane did before engine bb9bd1ba56.
+	double inset;
 
 	// Refill in place rather than returning a fresh object. The apply chain now
 	// runs from UiTick so the menu can re-tint the map while the game is
@@ -42,6 +45,7 @@ class GITD_Lane
 	// The lane cvars are named at run time from the prefix, so menu_lint
 	// cannot see them read; they are declared for it here instead.
 	// LINT-CVARS: gitd_wf_on gitd_wf_policy gitd_wf_color gitd_wf_reach gitd_wf_falloff gitd_wf_intensity gitd_wf_far gitd_wf_farcolor
+	// LINT-CVARS: gitd_wf_inset gitd_wc_inset gitd_fg_inset gitd_cg_inset gitd_liq_inset
 	// LINT-CVARS: gitd_wc_on gitd_wc_policy gitd_wc_color gitd_wc_reach gitd_wc_falloff gitd_wc_intensity gitd_wc_far gitd_wc_farcolor
 	// LINT-CVARS: gitd_fg_on gitd_fg_policy gitd_fg_color gitd_fg_reach gitd_fg_falloff gitd_fg_intensity gitd_fg_far gitd_fg_farcolor
 	// LINT-CVARS: gitd_cg_on gitd_cg_policy gitd_cg_color gitd_cg_reach gitd_cg_falloff gitd_cg_intensity gitd_cg_far gitd_cg_farcolor
@@ -56,6 +60,7 @@ class GITD_Lane
 		intensity = GITD_Util.GetF(p .. "_intensity", 1.0);
 		farMode   = GITD_Util.GetI(p .. "_far", 1);
 		farCol    = GITD_Util.GetC(p .. "_farcolor");
+		inset     = GITD_Util.GetF(p .. "_inset", 0.0);
 	}
 
 	static GITD_Lane FromCVars(String p)
@@ -958,6 +963,7 @@ class GITD_Handler : EventHandler
 	// The lane and randomiser sliders reach the map through this apply, and
 	// UiTick starts and steps it -- the map re-tints under the menu within a
 	// few tics of a drag. Declared for menu_lint's live-page check:
+	// LINT-UI-LIVE: gitd_wf_inset gitd_wc_inset gitd_fg_inset gitd_cg_inset gitd_liq_inset
 	// LINT-UI-LIVE: gitd_wf_color gitd_wf_reach gitd_wf_intensity gitd_wf_farcolor
 	// LINT-UI-LIVE: gitd_wc_color gitd_wc_reach gitd_wc_intensity gitd_wc_farcolor
 	// LINT-UI-LIVE: gitd_fg_color gitd_fg_reach gitd_fg_intensity gitd_fg_farcolor
@@ -1213,6 +1219,9 @@ class GITD_Handler : EventHandler
 		int    kFG = LaneFall(floorLane),   kCG = LaneFall(laneCG);
 		double iWF = LaneInten(wallLoLane), iWC = LaneInten(laneWC);
 		double iFG = LaneInten(floorLane),  iCG = LaneInten(laneCG);
+		// How far in from the seam each lane starts (engine bb9bd1ba56).
+		double nWF = LaneInset(wallLoLane), nWC = LaneInset(laneWC);
+		double nFG = LaneInset(floorLane),  nCG = LaneInset(laneCG);
 
 		bool wfOn = wallLoLane && wallLoLane.Drawn();
 		bool wcOn = laneWC     && laneWC.Drawn();
@@ -1286,11 +1295,16 @@ class GITD_Handler : EventHandler
 			double amt = clamp(GITD_Util.GetF("gitd_seamless_meet_amt", 0.55), 0.05, 1.0);
 			double rf = 0.20 + 0.45 * amt;   // a fifth of the reach, up to two thirds
 
-			if (wfOn && !fgOn) { cFG = cWF; fFG = fWF; kFG = kWF; rFG = max(rWF * rf, 32.0); iFG = iWF * amt; fgOn = true; }
-			else if (fgOn && !wfOn) { cWF = cFG; fWF = fFG; kWF = kFG; rWF = max(rFG * rf, 32.0); iWF = iFG * amt; wfOn = true; }
+			// A FABRICATED LANE STARTS AT THE SEAM. Its whole job is to carry the
+			// join, so it takes the lit side's colour but never its inset -- an
+			// inset lane is one the preset deliberately kept off the seam.
 
-			if (wcOn && !cgOn) { cCG = cWC; fCG = fWC; kCG = kWC; rCG = max(rWC * rf, 32.0); iCG = iWC * amt; cgOn = true; }
-			else if (cgOn && !wcOn) { cWC = cCG; fWC = fCG; kWC = kCG; rWC = max(rCG * rf, 32.0); iWC = iCG * amt; wcOn = true; }
+
+			if (wfOn && !fgOn) { cFG = cWF; fFG = fWF; kFG = kWF; rFG = max(rWF * rf, 32.0); iFG = iWF * amt; nFG = 0.0; fgOn = true; }
+			else if (fgOn && !wfOn) { cWF = cFG; fWF = fFG; kWF = kFG; rWF = max(rFG * rf, 32.0); iWF = iFG * amt; nWF = 0.0; wfOn = true; }
+
+			if (wcOn && !cgOn) { cCG = cWC; fCG = fWC; kCG = kWC; rCG = max(rWC * rf, 32.0); iCG = iWC * amt; nCG = 0.0; cgOn = true; }
+			else if (cgOn && !wcOn) { cWC = cCG; fWC = fCG; kWC = kCG; rWC = max(rCG * rf, 32.0); iWC = iCG * amt; nWC = 0.0; wcOn = true; }
 
 			// A WHOLE CLASS DARK. The pairs above only fire when ONE side of a
 			// junction is off, so a preset that switches off BOTH wall lanes (Spore)
@@ -1302,16 +1316,16 @@ class GITD_Handler : EventHandler
 				Color src = fgOn ? cFG : cCG; Color srcFar = fgOn ? fFG : fCG;
 				double srcR = fgOn ? rFG : rCG; double srcI = fgOn ? iFG : iCG;
 				int srcK = fgOn ? kFG : kCG;
-				cWF = src; fWF = srcFar; kWF = srcK; rWF = max(srcR * rf, 32.0); iWF = srcI * amt; wfOn = true;
-				cWC = src; fWC = srcFar; kWC = srcK; rWC = max(srcR * rf, 32.0); iWC = srcI * amt; wcOn = true;
+				cWF = src; fWF = srcFar; kWF = srcK; rWF = max(srcR * rf, 32.0); iWF = srcI * amt; nWF = 0.0; wfOn = true;
+				cWC = src; fWC = srcFar; kWC = srcK; rWC = max(srcR * rf, 32.0); iWC = srcI * amt; nWC = 0.0; wcOn = true;
 			}
 			else if (!fgOn && !cgOn && (wfOn || wcOn))
 			{
 				Color src = wfOn ? cWF : cWC; Color srcFar = wfOn ? fWF : fWC;
 				double srcR = wfOn ? rWF : rWC; double srcI = wfOn ? iWF : iWC;
 				int srcK = wfOn ? kWF : kWC;
-				cFG = src; fFG = srcFar; kFG = srcK; rFG = max(srcR * rf, 32.0); iFG = srcI * amt; fgOn = true;
-				cCG = src; fCG = srcFar; kCG = srcK; rCG = max(srcR * rf, 32.0); iCG = srcI * amt; cgOn = true;
+				cFG = src; fFG = srcFar; kFG = srcK; rFG = max(srcR * rf, 32.0); iFG = srcI * amt; nFG = 0.0; fgOn = true;
+				cCG = src; fCG = srcFar; kCG = srcK; rCG = max(srcR * rf, 32.0); iCG = srcI * amt; nCG = 0.0; cgOn = true;
 			}
 		}
 
@@ -1383,19 +1397,20 @@ class GITD_Handler : EventHandler
 
 		if (!(claimed & CLAIM_WALLS))
 		{
-			ApplyWallLane(sec, Sector.floor,   wfOn, cWF, fWF, rWF, kWF, iWF);
-			ApplyWallLane(sec, Sector.ceiling, wcOn, cWC, fWC, rWC, kWC, iWC);
+			ApplyWallLane(sec, Sector.floor,   wfOn, cWF, fWF, rWF, kWF, iWF, nWF);
+			ApplyWallLane(sec, Sector.ceiling, wcOn, cWC, fWC, rWC, kWC, iWC, nWC);
 		}
 		if (!(claimed & CLAIM_FLATS))
 		{
-			ApplyFlatLane(sec, Sector.floor,   fgOn, cFG, fFG, rFG, kFG, iFG);
-			ApplyFlatLane(sec, Sector.ceiling, cgOn, cCG, fCG, rCG, kCG, iCG);
+			ApplyFlatLane(sec, Sector.floor,   fgOn, cFG, fFG, rFG, kFG, iFG, nFG);
+			ApplyFlatLane(sec, Sector.ceiling, cgOn, cCG, fCG, rCG, kCG, iCG, nCG);
 		}
 	}
 
 	ui double LaneReach(GITD_Lane ln) { return ln ? ln.reach : 0.0; }
 	ui int    LaneFall(GITD_Lane ln)  { return ln ? ln.falloff : 0; }
 	ui double LaneInten(GITD_Lane ln) { return ln ? ln.intensity : 1.0; }
+	ui double LaneInset(GITD_Lane ln) { return ln ? ln.inset : 0.0; }
 
 	// One lane's colour, packed for the per-sector tables. A lane that draws
 	// nothing stores NO_COLOUR, which Neighbourly skips.
@@ -1408,7 +1423,8 @@ class GITD_Handler : EventHandler
 	}
 
 	ui void ApplyWallLane(Sector sec, int planePos, bool on,
-		Color nearCol, Color farCol, double reach, int falloff, double inten)
+		Color nearCol, Color farCol, double reach, int falloff, double inten,
+		double inset = 0.0)
 	{
 		// Intensity 0 is off, not "unset" -- see GITD_Lane.Drawn.
 		if (!on || inten <= 0.0)
@@ -1416,30 +1432,36 @@ class GITD_Handler : EventHandler
 			sec.SetGlowColor(planePos, Color(0, 0, 0, 0));
 			sec.SetGlowColorFar(planePos, Color(0, 0, 0, 0));
 			sec.SetGlowHeight(planePos, 0.0);
+			sec.SetGlowInset(planePos, 0.0);
 			return;
 		}
 
 		sec.SetGlowColor(planePos, nearCol);
 		sec.SetGlowColorFar(planePos, farCol);
 		sec.SetGlowHeight(planePos, reach);      // VERTICAL, up the wall
+		// How far in from the seam it starts; 0 is the old curve exactly.
+		sec.SetGlowInset(planePos, clamp(inset, 0.0, max(reach - 1.0, 0.0)));
 		sec.SetGlowFalloff(planePos, falloff);
 		sec.SetGlowIntensity(planePos, inten);   // scales colour, not reach
 	}
 
 	ui void ApplyFlatLane(Sector sec, int planePos, bool on,
-		Color nearCol, Color farCol, double reach, int falloff, double inten)
+		Color nearCol, Color farCol, double reach, int falloff, double inten,
+		double inset = 0.0)
 	{
 		if (!on || inten <= 0.0)
 		{
 			sec.SetFlatGlowColor(planePos, Color(0, 0, 0, 0));
 			sec.SetFlatGlowColorFar(planePos, Color(0, 0, 0, 0));
 			sec.SetFlatGlowHeight(planePos, 0.0);
+			sec.SetFlatGlowInset(planePos, 0.0);
 			return;
 		}
 
 		sec.SetFlatGlowColor(planePos, nearCol);
 		sec.SetFlatGlowColorFar(planePos, farCol);
 		sec.SetFlatGlowHeight(planePos, reach);  // HORIZONTAL, inward from edge
+		sec.SetFlatGlowInset(planePos, clamp(inset, 0.0, max(reach - 1.0, 0.0)));
 		sec.SetFlatGlowFalloff(planePos, falloff);
 		sec.SetFlatGlowIntensity(planePos, inten);
 	}
@@ -1675,6 +1697,7 @@ class GITD_Handler : EventHandler
 		h = Acc(h, GITD_Util.GetI(p .. "_policy"));
 		h = Acc(h, GITD_Util.GetI(p .. "_color"));
 		h = Acc(h, int(GITD_Util.GetF(p .. "_reach") * 100.0));
+		h = Acc(h, int(GITD_Util.GetF(p .. "_inset") * 100.0));
 		h = Acc(h, GITD_Util.GetI(p .. "_falloff"));
 		h = Acc(h, int(GITD_Util.GetF(p .. "_intensity") * 1000.0));
 		h = Acc(h, GITD_Util.GetI(p .. "_far"));

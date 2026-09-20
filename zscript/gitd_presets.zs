@@ -36,6 +36,13 @@ class GITD_Presets
 		GITD_Util.SetC(p .. "_farcolor", farR, farG, farB);
 	}
 
+	// How far in from the seam a lane starts (engine bb9bd1ba56). 0, which is
+	// what Base writes, is the curve every preset had before it existed.
+	static void Inset(String p, double dist)
+	{
+		GITD_Util.SetF(p .. "_inset", dist);
+	}
+
 	static void Window(double hMin, double hMax, double sMin, double sMax,
 		double vMin, double vMax)
 	{
@@ -137,6 +144,10 @@ class GITD_Presets
 		Flow(0, 12, 1, 1);
 		Cells(0, 24, 1, 0.5);
 		if (surfaceOnly) return;
+
+		// Every lane starts at the seam unless a preset says otherwise.
+		Inset("gitd_wf", 0); Inset("gitd_wc", 0);
+		Inset("gitd_fg", 0); Inset("gitd_cg", 0); Inset("gitd_liq", 0);
 
 		Window(0, 360, 0.5, 0.85, 0.45, 0.9);
 		LightDir(true);
@@ -240,6 +251,12 @@ class GITD_Presets
 		Lane("gitd_wc", true, 2, 0, 0, 0, 100, 2, 0.85);
 		Lane("gitd_fg", true, 2, 0, 0, 0, 140, 2, 1.20);
 		Lane("gitd_cg", true, 2, 0, 0, 0,  90, 2, 0.70);
+		// THE FLATS FADE OUT BEFORE THE SEAM. The floor and ceiling faces go
+		// dark where they meet the wall and come up over the next 30-odd units,
+		// so the room's own surfaces carry the light instead of the join
+		// carrying it. This is what the owner asked the engine feature for.
+		Inset("gitd_fg", 34);
+		Inset("gitd_cg", 26);
 		Wave(220, 0.35, 0.6, 1, 0.30, 0.40, 0.20);
 		Liquid(true, 0, 40, 255, 190, 180, 2, 1.5, true);
 	}
